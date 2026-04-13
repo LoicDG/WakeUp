@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Adaptive icon foreground — 108×108dp viewport, safe zone 18–90.
+    Design: minimalist analog clock face, amber on midnight navy.
+    Clock hands set to 7:00 (classic alarm-clock pose).
+
+    Clock geometry:
+      Center:      (54, 54)
+      Ring radius: 28  →  ring spans (26–82) × (26–82), within safe zone
+      Hour hand:   length 15, angle 210° (7 o'clock)
+                   endpoint = (54 + 15·sin210°, 54 − 15·cos210°)
+                            = (54 − 7.5, 54 + 13) = (46.5, 67)
+      Minute hand: length 22, angle 0° (12 o'clock)
+                   endpoint = (54, 54 − 22) = (54, 32)
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Very subtle amber glow inside the ring (≈5% opacity) -->
+    <path
+        android:fillColor="#0DF5B731"
+        android:pathData="M54,26 A28,28 0 0 1 82,54 A28,28 0 0 1 54,82 A28,28 0 0 1 26,54 A28,28 0 0 1 54,26 Z" />
+
+    <!-- Clock ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#F5B731"
+        android:strokeWidth="1.5"
+        android:pathData="M54,26 A28,28 0 0 1 82,54 A28,28 0 0 1 54,82 A28,28 0 0 1 26,54 A28,28 0 0 1 54,26 Z" />
+
+    <!--
+        Cardinal tick marks — 4 short lines (length 4) inward from the ring.
+        They sit just inside the stroke of the ring, giving a classic dial look.
+        12 → (54,27)–(54,31)
+         3 → (81,54)–(77,54)
+         6 → (54,81)–(54,77)
+         9 → (27,54)–(31,54)
+    -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#F5B731"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="square"
+        android:pathData="M54,27 L54,31 M81,54 L77,54 M54,81 L54,77 M27,54 L31,54" />
+
+    <!-- Minute hand — thin, 12 o'clock (straight up) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#F5B731"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,54 L54,32" />
+
+    <!-- Hour hand — thick, 7 o'clock (210°) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#F5B731"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M54,54 L46.5,67" />
+
+    <!-- Center cap — filled amber dot -->
+    <path
+        android:fillColor="#F5B731"
+        android:pathData="M54,51.8 A2.2,2.2 0 0 1 56.2,54 A2.2,2.2 0 0 1 54,56.2 A2.2,2.2 0 0 1 51.8,54 A2.2,2.2 0 0 1 54,51.8 Z" />
+
+</vector>

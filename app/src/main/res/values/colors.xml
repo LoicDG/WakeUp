@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="midnight">#FF08101E</color>
+    <color name="deep_navy">#FF0F1C30</color>
+    <color name="amber">#FFFFA726</color>
+    <color name="star_white">#FFE2EAFF</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>
