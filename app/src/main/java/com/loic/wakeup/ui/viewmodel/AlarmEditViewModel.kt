@@ -36,7 +36,7 @@ class AlarmEditViewModel(app: Application) : AndroidViewModel(app) {
 
     fun save(onDone: () -> Unit) {
         viewModelScope.launch {
-            if (nfcStore.getUid() == null) {
+            if (_alarm.value.nfcTagUid == null && nfcStore.getUid() == null) {
                 _errorEvent.tryEmit(getApplication<Application>().getString(R.string.nfc_tag_required))
                 return@launch
             }

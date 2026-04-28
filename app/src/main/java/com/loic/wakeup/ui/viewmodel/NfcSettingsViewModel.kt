@@ -31,14 +31,23 @@ class NfcSettingsViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    suspend fun previewClearCount(): Int {
+        val app = getApplication<Application>()
+        val repo = AlarmRepository(AlarmDatabase.getInstance(app).alarmDao())
+        return repo.getAllEnabled().count { it.nfcTagUid == null }
+    }
+
     fun clearTag() {
         viewModelScope.launch {
-            val app  = getApplication<Application>()
+            val app = getApplication<Application>()
             val repo = AlarmRepository(AlarmDatabase.getInstance(app).alarmDao())
             val sched = AlarmScheduler(app)
-            // Cancel all scheduled alarms before disabling them in DB
-            repo.getAllEnabled().forEach { sched.cancel(it.id) }
-            repo.disableAll()
+            repo.getAllEnabled()
+                .filter { it.nfcTagUid == null }
+                .forEach { alarm ->
+                    sched.cancel(alarm.id)
+                    repo.setEnabled(alarm.id, false)
+                }
             store.clear()
             _uid.value = null
         }

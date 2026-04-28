@@ -17,13 +17,26 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(project.property("WAKEUP_KEYSTORE_FILE") as String)
+            storePassword = project.property("WAKEUP_KEYSTORE_PASSWORD") as String
+            keyAlias = project.property("WAKEUP_KEY_ALIAS") as String
+            keyPassword = project.property("WAKEUP_KEY_PASSWORD") as String
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

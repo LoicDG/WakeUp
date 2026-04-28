@@ -5,7 +5,7 @@ import java.util.Calendar
 /**
  * Computes the next trigger time in epoch millis.
  *
- * [daysMask] bitmask: bit 0 = Monday, bit 6 = Sunday (same as Calendar.DAY_OF_WEEK mapped).
+ * [daysMask] bitmask: bit 0 = Sunday, bit 6 = Saturday (same as Calendar.DAY_OF_WEEK mapped).
  * If daysMask == 0 the alarm is one-shot: fires at the next occurrence of hour:minute
  * (today if the time hasn't passed yet, else tomorrow).
  */
@@ -34,14 +34,14 @@ object NextTriggerCalculator {
         return cal.timeInMillis
     }
 
-    /** Maps Calendar.DAY_OF_WEEK (Sun=1…Sat=7) to bit index (Mon=0…Sun=6). */
+    /** Maps Calendar.DAY_OF_WEEK (Sun=1…Sat=7) to bit index (Sun=0…Sat=6). */
     private fun calDowToBit(calDow: Int): Int = when (calDow) {
-        Calendar.MONDAY    -> 0
-        Calendar.TUESDAY   -> 1
-        Calendar.WEDNESDAY -> 2
-        Calendar.THURSDAY  -> 3
-        Calendar.FRIDAY    -> 4
-        Calendar.SATURDAY  -> 5
-        else               -> 6 // Sunday
+        Calendar.SUNDAY    -> 0
+        Calendar.MONDAY    -> 1
+        Calendar.TUESDAY   -> 2
+        Calendar.WEDNESDAY -> 3
+        Calendar.THURSDAY  -> 4
+        Calendar.FRIDAY    -> 5
+        else               -> 6 // Saturday
     }
 }

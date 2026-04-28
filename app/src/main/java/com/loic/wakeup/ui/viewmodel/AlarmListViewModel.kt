@@ -29,7 +29,7 @@ class AlarmListViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setEnabled(alarm: AlarmEntity, enabled: Boolean) {
         viewModelScope.launch {
-            if (enabled && nfcStore.getUid() == null) {
+            if (enabled && alarm.nfcTagUid == null && nfcStore.getUid() == null) {
                 _errorEvent.tryEmit(getApplication<Application>().getString(R.string.nfc_tag_required))
                 return@launch
             }

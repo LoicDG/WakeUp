@@ -245,7 +245,7 @@ private fun DayDots(mask: Int, enabled: Boolean) {
         )
         return
     }
-    val letters = listOf("M", "T", "W", "T", "F", "S", "S")
+    val letters = listOf("S", "M", "T", "W", "T", "F", "S")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         letters.forEachIndexed { bit, letter ->
             val active = mask and (1 shl bit) != 0
