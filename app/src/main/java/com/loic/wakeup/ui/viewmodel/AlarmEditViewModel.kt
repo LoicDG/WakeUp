@@ -9,6 +9,7 @@ import com.loic.wakeup.data.AlarmEntity
 import com.loic.wakeup.data.AlarmRepository
 import com.loic.wakeup.data.NfcTagStore
 import com.loic.wakeup.domain.AlarmScheduler
+import com.loic.wakeup.domain.canActivateWithGlobalTag
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -36,11 +37,11 @@ class AlarmEditViewModel(app: Application) : AndroidViewModel(app) {
 
     fun save(onDone: () -> Unit) {
         viewModelScope.launch {
-            if (_alarm.value.nfcTagUid == null && nfcStore.getUid() == null) {
+            if (!_alarm.value.canActivateWithGlobalTag(nfcStore.getUid())) {
                 _errorEvent.tryEmit(getApplication<Application>().getString(R.string.nfc_tag_required))
                 return@launch
             }
-            val toSave = _alarm.value.copy(enabled = true)
+            val toSave = _alarm.value.copy(enabled = true, temporaryDisabledUntilMillis = null)
             val id     = repo.upsert(toSave).toInt()
             val saved  = toSave.copy(id = if (toSave.id == 0) id else toSave.id)
             scheduler.schedule(saved)

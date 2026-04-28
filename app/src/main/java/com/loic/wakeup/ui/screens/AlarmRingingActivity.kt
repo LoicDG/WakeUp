@@ -13,6 +13,8 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.addCallback
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -35,7 +37,6 @@ import com.loic.wakeup.service.RingState
 import com.loic.wakeup.ui.theme.Midnight
 import com.loic.wakeup.ui.theme.StarWhite
 import com.loic.wakeup.ui.theme.WakeUpTheme
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -44,6 +45,7 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     private var nfcAdapter: NfcAdapter? = null
     private lateinit var nfcTagStore: NfcTagStore
     private var snackbarMessage by mutableStateOf<String?>(null)
+    private var dismissWithoutTag by mutableStateOf(false)
     private var alarmId = -1
 
     @Volatile private var expectedUid: String? = null
@@ -60,10 +62,13 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         lifecycleScope.launch {
             val repo = AlarmRepository(AlarmDatabase.getInstance(this@AlarmRingingActivity).alarmDao())
             val alarm = if (alarmId >= 0) repo.getById(alarmId) else null
-            expectedUid = alarm?.nfcTagUid ?: nfcTagStore.getUid()
+            dismissWithoutTag = alarm?.dismissWithoutTag == true
+            expectedUid = if (dismissWithoutTag) null else alarm?.nfcTagUid ?: nfcTagStore.getUid()
             preloadDone = true
+            if (dismissWithoutTag) nfcAdapter?.disableReaderMode(this@AlarmRingingActivity)
+            else if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) enableNfcReaderIfNeeded()
             val pending = pendingScanHex
-            if (pending != null) runOnUiThread { handleScan(pending) }
+            if (pending != null && !dismissWithoutTag) runOnUiThread { handleScan(pending) }
         }
 
         // Modern lock-screen APIs (API 27+); fall back to legacy flags on API 26
@@ -86,7 +91,9 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
             WakeUpTheme {
                 RingingScreen(
                     snackbarMessage = snackbarMessage,
+                    dismissWithoutTag = dismissWithoutTag,
                     onSnooze = ::snooze,
+                    onDismiss = ::dismiss,
                     onOpenNfcSettings = {
                         startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
                     },
@@ -97,6 +104,12 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     override fun onResume() {
         super.onResume()
+        enableNfcReaderIfNeeded()
+    }
+
+    private fun enableNfcReaderIfNeeded() {
+        if (!preloadDone) return
+        if (dismissWithoutTag) return
         val nfc = nfcAdapter
         if (nfc == null || !nfc.isEnabled) {
             snackbarMessage = getString(R.string.nfc_disabled)
@@ -157,6 +170,7 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     // Called on a background thread by the NFC reader-mode stack — works on lock screen
     override fun onTagDiscovered(tag: Tag) {
+        if (dismissWithoutTag) return
         val scannedHex = tag.id.joinToString("") { "%02x".format(it) }
         if (!preloadDone) {
             pendingScanHex = scannedHex
@@ -189,7 +203,9 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 @Composable
 private fun RingingScreen(
     snackbarMessage: String?,
+    dismissWithoutTag: Boolean,
     onSnooze: () -> Unit,
+    onDismiss: () -> Unit,
     onOpenNfcSettings: () -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
@@ -300,12 +316,30 @@ private fun RingingScreen(
                 horizontalAlignment  = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    "Scan NFC tag to dismiss",
+                    stringResource(
+                        if (dismissWithoutTag) R.string.ringing_no_tag_prompt
+                        else R.string.ringing_scan_tag_prompt
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = StarWhite.copy(alpha = 0.4f),
                 )
 
                 when {
+                    dismissWithoutTag -> {
+                        Button(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor   = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Text(stringResource(R.string.dismiss), style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
                     isSnoozed -> {
                         // Show countdown during silent snooze window
                         val mm = remainingSeconds / 60
@@ -341,15 +375,17 @@ private fun RingingScreen(
                     }
                 }
 
-                OutlinedButton(
-                    onClick = onOpenNfcSettings,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors   = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Text(stringResource(R.string.enable_nfc))
+                if (!dismissWithoutTag) {
+                    OutlinedButton(
+                        onClick = onOpenNfcSettings,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors   = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(stringResource(R.string.enable_nfc))
+                    }
                 }
             }
         }

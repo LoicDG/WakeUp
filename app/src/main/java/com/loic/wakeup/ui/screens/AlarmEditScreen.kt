@@ -65,7 +65,7 @@ fun AlarmEditScreen(
             onDismissRequest = { nfcScanning = false; showNfcSheet = false },
         ) {
             NfcScanningEffect(nfcScanning) { hex ->
-                vm.update(alarm.copy(nfcTagUid = hex))
+                vm.update(alarm.copy(nfcTagUid = hex, dismissWithoutTag = false))
                 nfcScanning = false
                 showNfcSheet = false
             }
@@ -258,6 +258,22 @@ fun AlarmEditScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 when {
+                    alarm.dismissWithoutTag -> {
+                        Text(
+                            stringResource(R.string.nfc_no_tag_required),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        OutlinedButton(
+                            onClick = { },
+                            enabled = false,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                        ) { Text(stringResource(R.string.nfc_pair_custom)) }
+                    }
                     alarm.nfcTagUid != null -> {
                         Text(
                             stringResource(
@@ -278,7 +294,7 @@ fun AlarmEditScreen(
                                 ),
                             ) { Text(stringResource(R.string.nfc_pair_new)) }
                             OutlinedButton(
-                                onClick = { vm.update(alarm.copy(nfcTagUid = null)) },
+                                onClick = { vm.update(alarm.copy(nfcTagUid = null, dismissWithoutTag = false)) },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(
@@ -317,6 +333,28 @@ fun AlarmEditScreen(
                             ),
                         ) { Text(stringResource(R.string.nfc_pair_custom)) }
                     }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        stringResource(R.string.nfc_use_no_tag),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Switch(
+                        checked = alarm.dismissWithoutTag,
+                        onCheckedChange = { enabled ->
+                            vm.update(
+                                alarm.copy(
+                                    dismissWithoutTag = enabled,
+                                    nfcTagUid = if (enabled) null else alarm.nfcTagUid,
+                                )
+                            )
+                        },
+                    )
                 }
             }
 

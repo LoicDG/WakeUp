@@ -7,7 +7,9 @@ import android.os.PowerManager
 import androidx.core.content.ContextCompat
 import com.loic.wakeup.data.AlarmDatabase
 import com.loic.wakeup.data.AlarmRepository
+import com.loic.wakeup.data.NfcTagStore
 import com.loic.wakeup.domain.AlarmScheduler
+import com.loic.wakeup.domain.canActivateWithGlobalTag
 import com.loic.wakeup.service.AlarmService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +20,31 @@ class AlarmReceiver : BroadcastReceiver() {
         val alarmId = intent.getIntExtra("alarmId", -1)
         if (alarmId == -1) return
         val isSnooze = intent.getBooleanExtra("isSnooze", false)
+        val reenableOnly = intent.getBooleanExtra("reenableOnly", false)
+
+        if (reenableOnly) {
+            val pendingResult = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val repo = AlarmRepository(AlarmDatabase.getInstance(context).alarmDao())
+                    val alarm = repo.getById(alarmId) ?: return@launch
+                    val reenableAt = alarm.temporaryDisabledUntilMillis ?: return@launch
+                    if (reenableAt > System.currentTimeMillis()) {
+                        AlarmScheduler(context).scheduleReenable(alarm, reenableAt)
+                        return@launch
+                    }
+                    if (!alarm.canActivateWithGlobalTag(NfcTagStore(context).getUid())) {
+                        repo.setEnabled(alarmId, false)
+                        return@launch
+                    }
+                    repo.clearTemporaryDisableAndEnable(alarmId)
+                    AlarmScheduler(context).schedule(alarm.copy(enabled = true, temporaryDisabledUntilMillis = null))
+                } finally {
+                    pendingResult.finish()
+                }
+            }
+            return
+        }
 
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WakeUp:AlarmReceiver")

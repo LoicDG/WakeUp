@@ -7,6 +7,7 @@ import com.loic.wakeup.data.AlarmDatabase
 import com.loic.wakeup.data.AlarmRepository
 import com.loic.wakeup.data.NfcTagStore
 import com.loic.wakeup.domain.AlarmScheduler
+import com.loic.wakeup.domain.requiresGlobalTag
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +35,7 @@ class NfcSettingsViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun previewClearCount(): Int {
         val app = getApplication<Application>()
         val repo = AlarmRepository(AlarmDatabase.getInstance(app).alarmDao())
-        return repo.getAllEnabled().count { it.nfcTagUid == null }
+        return repo.getAllEnabled().count { it.requiresGlobalTag() }
     }
 
     fun clearTag() {
@@ -43,7 +44,13 @@ class NfcSettingsViewModel(app: Application) : AndroidViewModel(app) {
             val repo = AlarmRepository(AlarmDatabase.getInstance(app).alarmDao())
             val sched = AlarmScheduler(app)
             repo.getAllEnabled()
-                .filter { it.nfcTagUid == null }
+                .filter { it.requiresGlobalTag() }
+                .forEach { alarm ->
+                    sched.cancel(alarm.id)
+                    repo.setEnabled(alarm.id, false)
+                }
+            repo.getAllTemporarilyDisabled()
+                .filter { it.requiresGlobalTag() }
                 .forEach { alarm ->
                     sched.cancel(alarm.id)
                     repo.setEnabled(alarm.id, false)
