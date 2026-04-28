@@ -115,9 +115,9 @@ class AlarmService : Service() {
             val repo  = AlarmRepository(AlarmDatabase.getInstance(this@AlarmService).alarmDao())
             val alarm = repo.getById(currentAlarmId)
             currentRingtoneUri = alarm?.ringtoneUri
-            val count = alarm?.snoozeCount ?: 0
-            val max   = alarm?.maxSnoozes  ?: 3
-            _ringState.value = RingState.Ringing(count, max)
+            val max = alarm?.maxSnoozes ?: 3
+            repo.setSnoozeCount(currentAlarmId, 0)
+            _ringState.value = RingState.Ringing(0, max)
             startRingtone(currentRingtoneUri)
         }
         startVibration()

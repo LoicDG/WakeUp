@@ -31,4 +31,14 @@
     <string name="nfc_tag_required">Register an NFC tag in Settings before activating an alarm.</string>
     <string name="snoozed_countdown">Snoozed · resumes in %s</string>
     <string name="max_snoozes_reached">No snoozes left — scan NFC tag to dismiss</string>
+    <string name="nfc_section_title">NFC TAG</string>
+    <string name="nfc_using_global_tag">Using global tag</string>
+    <string name="nfc_using_custom_tag">Custom tag: %1$s…%2$s</string>
+    <string name="nfc_no_tag_anywhere">No tag registered</string>
+    <string name="nfc_pair_custom">Pair custom tag</string>
+    <string name="nfc_pair_new">Pair new</string>
+    <string name="nfc_use_global">Use global tag</string>
+    <string name="clear_global_tag_confirm_title">Disable %1$d alarm(s)?</string>
+    <string name="clear_global_tag_confirm_body">These alarms have no custom tag and will be disabled.</string>
+    <string name="clear_global_tag_confirm_ok">Disable</string>
 </resources>

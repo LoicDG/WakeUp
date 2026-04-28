@@ -27,13 +27,17 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.loic.wakeup.R
+import com.loic.wakeup.data.AlarmDatabase
+import com.loic.wakeup.data.AlarmRepository
 import com.loic.wakeup.data.NfcTagStore
 import com.loic.wakeup.service.AlarmService
 import com.loic.wakeup.service.RingState
 import com.loic.wakeup.ui.theme.Midnight
 import com.loic.wakeup.ui.theme.StarWhite
 import com.loic.wakeup.ui.theme.WakeUpTheme
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
@@ -42,12 +46,25 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     private var snackbarMessage by mutableStateOf<String?>(null)
     private var alarmId = -1
 
+    @Volatile private var expectedUid: String? = null
+    @Volatile private var preloadDone: Boolean = false
+    @Volatile private var pendingScanHex: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         alarmId = intent.getIntExtra(AlarmService.EXTRA_ALARM_ID, -1)
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         nfcTagStore = NfcTagStore(this)
+
+        lifecycleScope.launch {
+            val repo = AlarmRepository(AlarmDatabase.getInstance(this@AlarmRingingActivity).alarmDao())
+            val alarm = if (alarmId >= 0) repo.getById(alarmId) else null
+            expectedUid = alarm?.nfcTagUid ?: nfcTagStore.getUid()
+            preloadDone = true
+            val pending = pendingScanHex
+            if (pending != null) runOnUiThread { handleScan(pending) }
+        }
 
         // Modern lock-screen APIs (API 27+); fall back to legacy flags on API 26
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
@@ -141,13 +158,19 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     // Called on a background thread by the NFC reader-mode stack — works on lock screen
     override fun onTagDiscovered(tag: Tag) {
         val scannedHex = tag.id.joinToString("") { "%02x".format(it) }
-        val storedUid = nfcTagStore.getUid()
-        Handler(mainLooper).post {
-            if (storedUid != null && scannedHex == storedUid) {
-                dismiss()
-            } else {
-                snackbarMessage = getString(R.string.wrong_tag)
-            }
+        if (!preloadDone) {
+            pendingScanHex = scannedHex
+            return
+        }
+        Handler(mainLooper).post { handleScan(scannedHex) }
+    }
+
+    private fun handleScan(hex: String) {
+        val expected = expectedUid
+        if (expected != null && hex == expected) {
+            dismiss()
+        } else {
+            snackbarMessage = getString(R.string.wrong_tag)
         }
     }
 

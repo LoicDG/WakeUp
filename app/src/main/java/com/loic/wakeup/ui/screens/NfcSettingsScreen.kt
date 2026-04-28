@@ -1,11 +1,8 @@
 package com.loic.wakeup.ui.screens
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
-import android.nfc.NfcAdapter
 import android.provider.Settings
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -20,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.loic.wakeup.R
+import com.loic.wakeup.ui.nfc.NfcScanningEffect
 import com.loic.wakeup.ui.viewmodel.NfcSettingsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,25 +30,11 @@ fun NfcSettingsScreen(
     val uid by vm.uid.collectAsState()
     val scanning by vm.scanning.collectAsState()
 
-    DisposableEffect(scanning) {
-        val activity = context.findActivity()
-        val adapter = NfcAdapter.getDefaultAdapter(context)
-        if (scanning && activity != null && adapter != null) {
-            val callback = NfcAdapter.ReaderCallback { tag ->
-                val hex = tag.id.joinToString("") { "%02x".format(it) }
-                vm.onTagScanned(hex)
-            }
-            val flags = NfcAdapter.FLAG_READER_NFC_A or
-                    NfcAdapter.FLAG_READER_NFC_B or
-                    NfcAdapter.FLAG_READER_NFC_F or
-                    NfcAdapter.FLAG_READER_NFC_V or
-                    NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
-            adapter.enableReaderMode(activity, callback, flags, null)
-            onDispose { adapter.disableReaderMode(activity) }
-        } else {
-            onDispose { }
-        }
-    }
+    NfcScanningEffect(scanning) { vm.onTagScanned(it) }
+
+    val coroutineScope = rememberCoroutineScope()
+    var showClearConfirm by remember { mutableStateOf(false) }
+    var clearCount by remember { mutableIntStateOf(0) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -96,6 +80,24 @@ fun NfcSettingsScreen(
                         style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (showClearConfirm) {
+                        AlertDialog(
+                            onDismissRequest = { showClearConfirm = false },
+                            title = { Text(stringResource(R.string.clear_global_tag_confirm_title, clearCount)) },
+                            text = { Text(stringResource(R.string.clear_global_tag_confirm_body)) },
+                            confirmButton = {
+                                TextButton(onClick = { vm.clearTag(); showClearConfirm = false }) {
+                                    Text(stringResource(R.string.clear_global_tag_confirm_ok))
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showClearConfirm = false }) {
+                                    Text(stringResource(R.string.cancel))
+                                }
+                            },
+                        )
+                    }
+
                     if (uid != null) {
                         Text(
                             "Registered: ${uid!!.take(4)}…${uid!!.takeLast(4)}",
@@ -104,7 +106,12 @@ fun NfcSettingsScreen(
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             OutlinedButton(
-                                onClick = { vm.clearTag() },
+                                onClick = {
+                                    coroutineScope.launch {
+                                        clearCount = vm.previewClearCount()
+                                        if (clearCount > 0) showClearConfirm = true else vm.clearTag()
+                                    }
+                                },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(8.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(
@@ -201,11 +208,3 @@ fun NfcSettingsScreen(
     }
 }
 
-private fun Context.findActivity(): Activity? {
-    var ctx = this
-    while (ctx is ContextWrapper) {
-        if (ctx is Activity) return ctx
-        ctx = ctx.baseContext
-    }
-    return null
-}

@@ -39,7 +39,7 @@ Single-module Android app (`app/`) using MVVM + Repository pattern with Jetpack 
 
 **Key domain rules:**
 
-- `AlarmEntity.daysMask` is a bitmask where bit 0 = Monday … bit 6 = Sunday; `0` means one-shot alarm
+- `AlarmEntity.daysMask` is a bitmask where bit 0 = Sunday … bit 6 = Saturday; `0` means one-shot alarm
 - `NextTriggerCalculator` maps `Calendar.DAY_OF_WEEK` (Sun=1…Sat=7) to these bit indices
 - NFC dismiss: `AlarmRingingActivity` enables foreground NFC dispatch; scanning the registered tag (hex UID stored in `NfcTagStore`) broadcasts `ACTION_DISMISS` to stop `AlarmService`
 - Snooze increments `snoozeCount` in DB and calls `AlarmScheduler.scheduleAt` for `snoozeDurationSeconds` in the future; dismissed/expired one-shot alarms are not rescheduled
@@ -65,7 +65,7 @@ The `AlarmService` foreground service type is `specialUse` (subtype: `alarm`).
 |---|---|---|
 | `id` | Int (autoGenerate) | PK |
 | `hour` / `minute` | Int | 24-h time |
-| `daysMask` | Int | bitmask Mon=bit0…Sun=bit6; 0 = one-shot |
+| `daysMask` | Int | bitmask Sun=bit0…Sat=bit6; 0 = one-shot |
 | `label` | String | optional display name |
 | `ringtoneUri` | String | empty = system default alarm |
 | `enabled` | Boolean | false after one-shot fires or manual disable |
@@ -109,4 +109,8 @@ Dark-only (`WakeUpTheme` always uses `darkColorScheme`; `dynamicColor = false`).
   permission dialogs)                                                           
     will disable NFC. Never invoke  or similar from this
    activity.                                                                    
-  - The activity must retain focus over the lock screen to keep NFC active. 
+  - The activity must retain focus over the lock screen to keep NFC active.
+
+## Test device
+
+Galaxy S24, Android 16 (One UI 7/8). Samsung gates NFC while the keyguard is active; the ringing UI shows over the lock screen but the NFC radio does not scan until the device is unlocked. The per-app override lives at `Settings → Connections → NFC and contactless payments → Read and write/P2P`-adjacent toggle ("Require unlock" or similar wording varies by One UI version). No app-side code change can bypass this — if the toggle is unavailable, lock-screen NFC dismiss is not possible on this device.

@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
@@ -35,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.loic.wakeup.R
+import com.loic.wakeup.data.NfcTagStore
+import com.loic.wakeup.ui.nfc.NfcScanningEffect
 import com.loic.wakeup.ui.viewmodel.AlarmEditViewModel
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
@@ -50,7 +53,50 @@ fun AlarmEditScreen(
     LaunchedEffect(alarmId) { alarmId?.let { vm.load(it) } }
 
     val alarm by vm.alarm.collectAsState()
+    val context = LocalContext.current
+    val globalUid = remember { NfcTagStore(context).getUid() }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    var showNfcSheet by remember { mutableStateOf(false) }
+    var nfcScanning by remember { mutableStateOf(false) }
+
+    if (showNfcSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { nfcScanning = false; showNfcSheet = false },
+        ) {
+            NfcScanningEffect(nfcScanning) { hex ->
+                vm.update(alarm.copy(nfcTagUid = hex))
+                nfcScanning = false
+                showNfcSheet = false
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Text(
+                    "NFC TAG",
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                Text(
+                    stringResource(R.string.scan_tag_prompt),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(
+                    onClick = { nfcScanning = false; showNfcSheet = false },
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+    }
 
     LaunchedEffect(vm) {
         vm.errorEvent.collect { msg -> snackbarHostState.showSnackbar(msg) }
@@ -201,6 +247,76 @@ fun AlarmEditScreen(
                     ),
                 ) {
                     Text(stringResource(R.string.ringtone))
+                }
+            }
+
+            // NFC tag override
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    stringResource(R.string.nfc_section_title),
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                when {
+                    alarm.nfcTagUid != null -> {
+                        Text(
+                            stringResource(
+                                R.string.nfc_using_custom_tag,
+                                alarm.nfcTagUid!!.take(4),
+                                alarm.nfcTagUid!!.takeLast(4),
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(
+                                onClick = { showNfcSheet = true; nfcScanning = true },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                ),
+                            ) { Text(stringResource(R.string.nfc_pair_new)) }
+                            OutlinedButton(
+                                onClick = { vm.update(alarm.copy(nfcTagUid = null)) },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                ),
+                            ) { Text(stringResource(R.string.nfc_use_global)) }
+                        }
+                    }
+                    globalUid != null -> {
+                        Text(
+                            stringResource(R.string.nfc_using_global_tag),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedButton(
+                            onClick = { showNfcSheet = true; nfcScanning = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                        ) { Text(stringResource(R.string.nfc_pair_custom)) }
+                    }
+                    else -> {
+                        Text(
+                            stringResource(R.string.nfc_no_tag_anywhere),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        OutlinedButton(
+                            onClick = { showNfcSheet = true; nfcScanning = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                        ) { Text(stringResource(R.string.nfc_pair_custom)) }
+                    }
                 }
             }
 
@@ -365,7 +481,7 @@ private fun WheelPicker(
 
 @Composable
 private fun DaySelector(mask: Int, onMaskChange: (Int) -> Unit) {
-    val letters = listOf("M", "T", "W", "T", "F", "S", "S")
+    val letters = listOf("S", "M", "T", "W", "T", "F", "S")
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
