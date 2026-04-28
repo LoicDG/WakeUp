@@ -9,6 +9,8 @@ import com.loic.wakeup.data.AlarmEntity
 import com.loic.wakeup.data.AlarmRepository
 import com.loic.wakeup.data.NfcTagStore
 import com.loic.wakeup.domain.AlarmScheduler
+import com.loic.wakeup.domain.NextTriggerCalculator
+import com.loic.wakeup.domain.canActivateWithGlobalTag
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -29,13 +31,27 @@ class AlarmListViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setEnabled(alarm: AlarmEntity, enabled: Boolean) {
         viewModelScope.launch {
-            if (enabled && alarm.nfcTagUid == null && nfcStore.getUid() == null) {
+            if (enabled && !alarm.canActivateWithGlobalTag(nfcStore.getUid())) {
                 _errorEvent.tryEmit(getApplication<Application>().getString(R.string.nfc_tag_required))
                 return@launch
             }
             repo.setEnabled(alarm.id, enabled)
             if (enabled) scheduler.schedule(alarm.copy(enabled = true))
             else scheduler.cancel(alarm.id)
+        }
+    }
+
+    fun turnBackOnAfterNextRing(alarm: AlarmEntity) {
+        if (alarm.daysMask == 0 || alarm.enabled) return
+        viewModelScope.launch {
+            if (!alarm.canActivateWithGlobalTag(nfcStore.getUid())) {
+                _errorEvent.tryEmit(getApplication<Application>().getString(R.string.nfc_tag_required))
+                return@launch
+            }
+            val reenableAt = NextTriggerCalculator.next(alarm.hour, alarm.minute, alarm.daysMask)
+            repo.setTemporarilyDisabledUntil(alarm.id, reenableAt)
+            scheduler.cancel(alarm.id)
+            scheduler.scheduleReenable(alarm, reenableAt)
         }
     }
 

@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +25,9 @@ import com.loic.wakeup.data.AlarmEntity
 import com.loic.wakeup.domain.NextTriggerCalculator
 import com.loic.wakeup.ui.viewmodel.AlarmListViewModel
 import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun AlarmListScreen(
@@ -138,6 +142,7 @@ fun AlarmListScreen(
                             alarm = alarm,
                             currentTime = currentTime,
                             onToggle = { vm.setEnabled(alarm, it) },
+                            onTurnBackOnAfterNextRing = { vm.turnBackOnAfterNextRing(alarm) },
                             onEdit = { onEdit(alarm.id) },
                             onDelete = { vm.delete(alarm) },
                         )
@@ -155,6 +160,7 @@ private fun AlarmCard(
     alarm: AlarmEntity,
     currentTime: Long,
     onToggle: (Boolean) -> Unit,
+    onTurnBackOnAfterNextRing: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -166,65 +172,103 @@ private fun AlarmCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "%02d:%02d".format(alarm.hour, alarm.minute),
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = if (alarm.enabled)
-                        MaterialTheme.colorScheme.primary
-                    else
-                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                )
-                Spacer(Modifier.height(4.dp))
-                if (alarm.label.isNotEmpty()) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = alarm.label,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = "%02d:%02d".format(alarm.hour, alarm.minute),
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = if (alarm.enabled)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     )
-                    Spacer(Modifier.height(6.dp))
+                    Spacer(Modifier.height(4.dp))
+                    if (alarm.label.isNotEmpty()) {
+                        Text(
+                            text = alarm.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    DayDots(mask = alarm.daysMask, enabled = alarm.enabled)
+                    if (alarm.enabled) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = formatCountdown(currentTime, alarm),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        )
+                    }
                 }
-                DayDots(mask = alarm.daysMask, enabled = alarm.enabled)
-                if (alarm.enabled) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = formatCountdown(currentTime, alarm),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                Spacer(Modifier.width(12.dp))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Switch(
+                        checked = alarm.enabled,
+                        onCheckedChange = onToggle,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            uncheckedBorderColor = MaterialTheme.colorScheme.outline,
+                        ),
                     )
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
                 }
             }
-            Spacer(Modifier.width(12.dp))
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Switch(
-                    checked = alarm.enabled,
-                    onCheckedChange = onToggle,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                        uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                        uncheckedBorderColor = MaterialTheme.colorScheme.outline,
-                    ),
-                )
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        contentDescription = "Delete",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.size(18.dp),
+
+            if (alarm.daysMask != 0 && !alarm.enabled) {
+                val reenableDay = alarm.temporaryDisabledUntilMillis?.let { reenableAt ->
+                    formatNextRingAfter(alarm, reenableAt)
+                } ?: formatTurnBackOnDay(alarm, currentTime)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                if (alarm.temporaryDisabledUntilMillis == null) {
+                    TextButton(
+                        onClick = onTurnBackOnAfterNextRing,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Turn back on for $reenableDay")
+                    }
+                } else {
+                    Text(
+                        text = "Turns back on for $reenableDay",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 14.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -274,3 +318,29 @@ internal fun formatCountdown(now: Long, alarm: AlarmEntity): String {
     val triggerMs = NextTriggerCalculator.next(alarm.hour, alarm.minute, alarm.daysMask, now)
     return formatDuration(triggerMs - now)
 }
+
+internal fun formatNextRingDay(now: Long, alarm: AlarmEntity): String {
+    val triggerMs = NextTriggerCalculator.next(alarm.hour, alarm.minute, alarm.daysMask, now)
+    return formatDayName(triggerMs)
+}
+
+internal fun formatTurnBackOnDay(alarm: AlarmEntity, fromMillis: Long): String {
+    val triggerMs = nextRingAfterSkippedOccurrence(alarm, fromMillis)
+    return formatDayName(triggerMs)
+}
+
+internal fun formatNextRingAfter(alarm: AlarmEntity, fromMillis: Long): String {
+    val triggerMs = nextRingAfter(alarm, fromMillis)
+    return formatDayName(triggerMs)
+}
+
+internal fun nextRingAfterSkippedOccurrence(alarm: AlarmEntity, fromMillis: Long): Long {
+    val skippedTriggerMs = NextTriggerCalculator.next(alarm.hour, alarm.minute, alarm.daysMask, fromMillis)
+    return nextRingAfter(alarm, skippedTriggerMs)
+}
+
+internal fun nextRingAfter(alarm: AlarmEntity, fromMillis: Long): Long =
+    NextTriggerCalculator.next(alarm.hour, alarm.minute, alarm.daysMask, fromMillis + 1)
+
+private fun formatDayName(millis: Long): String =
+    SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(millis))

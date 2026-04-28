@@ -6,7 +6,7 @@
     <string name="alarm_notification_title">Alarm!</string>
     <string name="alarm_notification_text">Scan your NFC tag to dismiss</string>
     <string name="snooze">Snooze</string>
-    <string name="dismiss">Dismiss (NFC required)</string>
+    <string name="dismiss">Dismiss</string>
     <string name="wrong_tag">Wrong tag — scan the registered tag</string>
     <string name="nfc_disabled">NFC is disabled. Enable NFC to dismiss this alarm.</string>
     <string name="enable_nfc">Enable NFC</string>
@@ -35,9 +35,13 @@
     <string name="nfc_using_global_tag">Using global tag</string>
     <string name="nfc_using_custom_tag">Custom tag: %1$s…%2$s</string>
     <string name="nfc_no_tag_anywhere">No tag registered</string>
+    <string name="nfc_no_tag_required">No NFC tag required.</string>
     <string name="nfc_pair_custom">Pair custom tag</string>
     <string name="nfc_pair_new">Pair new</string>
     <string name="nfc_use_global">Use global tag</string>
+    <string name="nfc_use_no_tag">Use no tag</string>
+    <string name="ringing_scan_tag_prompt">Scan NFC tag to dismiss</string>
+    <string name="ringing_no_tag_prompt">Dismiss this alarm without scanning a tag</string>
     <string name="clear_global_tag_confirm_title">Disable %1$d alarm(s)?</string>
     <string name="clear_global_tag_confirm_body">These alarms have no custom tag and will be disabled.</string>
     <string name="clear_global_tag_confirm_ok">Disable</string>

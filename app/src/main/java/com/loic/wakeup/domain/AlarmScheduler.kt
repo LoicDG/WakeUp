@@ -26,8 +26,15 @@ class AlarmScheduler(private val context: Context) {
         alarmManager.setAlarmClock(AlarmClockInfo(atMillis, showIntent), operation)
     }
 
+    fun scheduleReenable(alarm: AlarmEntity, atMillis: Long) {
+        val operation = buildReenablePendingIntent(alarm.id)
+        val showIntent = buildReenablePendingIntent(alarm.id)
+        alarmManager.setAlarmClock(AlarmClockInfo(atMillis, showIntent), operation)
+    }
+
     fun cancel(alarmId: Int) {
         alarmManager.cancel(buildPendingIntent(alarmId))
+        alarmManager.cancel(buildReenablePendingIntent(alarmId))
     }
 
     private fun buildPendingIntent(alarmId: Int, isSnooze: Boolean = false): PendingIntent {
@@ -41,5 +48,24 @@ class AlarmScheduler(private val context: Context) {
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+    }
+
+    private fun buildReenablePendingIntent(alarmId: Int): PendingIntent {
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            action = ACTION_REENABLE_ALARM
+            putExtra("alarmId", alarmId)
+            putExtra("reenableOnly", true)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            REENABLE_REQUEST_CODE_OFFSET + alarmId,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
+    private companion object {
+        const val ACTION_REENABLE_ALARM = "com.loic.wakeup.action.REENABLE_ALARM"
+        const val REENABLE_REQUEST_CODE_OFFSET = 100_000
     }
 }

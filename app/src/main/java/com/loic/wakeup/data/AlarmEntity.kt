@@ -18,4 +18,6 @@ data class AlarmEntity(
     val maxSnoozes: Int = 3,
     val snoozeDurationSeconds: Int = 20,
     val nfcTagUid: String? = null,
+    val temporaryDisabledUntilMillis: Long? = null,
+    val dismissWithoutTag: Boolean = false,
 )
