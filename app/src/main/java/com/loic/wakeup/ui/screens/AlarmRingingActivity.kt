@@ -1,6 +1,10 @@
 package com.loic.wakeup.ui.screens
 
+import android.app.KeyguardManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.os.Build
@@ -13,6 +17,7 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.addCallback
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.animation.core.*
@@ -52,12 +57,34 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     @Volatile private var preloadDone: Boolean = false
     @Volatile private var pendingScanHex: String? = null
 
+    // Set true immediately before requesting a keyguard dismiss so the onStop() relaunch loop
+    // stands down: a deliberate unlock must NOT be fought with a re-launch the way HOME-away is.
+    // Cleared in onResume(), which fires on every return path (unlock success, cancel, or error).
+    @Volatile private var dismissingKeyguard = false
+
+    // Finish whenever the alarm is snoozed or dismissed — from anywhere (in-app button, the
+    // notification action, or an NFC scan). The service tears itself down on those actions, so
+    // the activity must not linger as a zombie ringing screen with a now-dead snooze button.
+    private val teardownReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) = finish()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         alarmId = intent.getIntExtra(AlarmService.EXTRA_ALARM_ID, -1)
         nfcAdapter = NfcAdapter.getDefaultAdapter(this)
         nfcTagStore = NfcTagStore(this)
+
+        ContextCompat.registerReceiver(
+            this,
+            teardownReceiver,
+            IntentFilter().apply {
+                addAction(AlarmService.ACTION_DISMISS)
+                addAction(AlarmService.ACTION_SNOOZE)
+            },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
 
         lifecycleScope.launch {
             val repo = AlarmRepository(AlarmDatabase.getInstance(this@AlarmRingingActivity).alarmDao())
@@ -94,9 +121,7 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
                     dismissWithoutTag = dismissWithoutTag,
                     onSnooze = ::snooze,
                     onDismiss = ::dismiss,
-                    onOpenNfcSettings = {
-                        startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
-                    },
+                    onUnlockToScan = ::unlockToScan,
                 )
             }
         }
@@ -104,7 +129,31 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     override fun onResume() {
         super.onResume()
+        // Focus is back (unlock succeeded, was cancelled, or errored) — HOME-away protection
+        // resumes, and on a successful unlock the device is now in the state where Samsung
+        // permits NFC, so re-arming reader mode here is what makes the post-unlock scan work.
+        dismissingKeyguard = false
         enableNfcReaderIfNeeded()
+    }
+
+    // Samsung One UI gates the NFC radio while the keyguard is active, so a tag can't be scanned
+    // over the lock screen no matter what the app does. Rather than send the user to NFC settings
+    // (which only toggles the radio, not the lock), prompt the keyguard dismiss directly: it
+    // overlays the bouncer without backgrounding us, and onResume re-arms the reader on success.
+    private fun unlockToScan() {
+        val nfc = nfcAdapter
+        if (nfc == null || !nfc.isEnabled) {
+            // Radio genuinely off — unlocking won't help; the only fix is the NFC settings toggle.
+            startActivity(Intent(Settings.ACTION_NFC_SETTINGS))
+            return
+        }
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        dismissingKeyguard = true
+        keyguard?.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
+            override fun onDismissError() {
+                snackbarMessage = getString(R.string.unlock_failed)
+            }
+        })
     }
 
     private fun enableNfcReaderIfNeeded() {
@@ -138,6 +187,10 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     override fun onStop() {
         super.onStop()
         nfcAdapter?.disableReaderMode(this)
+        // A deliberate keyguard dismiss must not be fought with a relaunch — that re-creates the
+        // very race we're fixing (lockscreen flashes, then the ringing UI yanks itself back).
+        // Reader mode is torn down above regardless; onResume re-arms it once focus returns.
+        if (dismissingKeyguard) return
         // Bring the activity back if the alarm is still ringing. Using onStop (not onPause)
         // avoids relaunching on transient focus losses, eliminating the race condition.
         if (!isFinishing && AlarmService.isRunning) {
@@ -155,7 +208,16 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
 
     override fun onDestroy() {
         super.onDestroy()
-        nfcAdapter?.disableReaderMode(this)
+        // onStop() already disabled reader mode and dropped this activity's NFC state. Calling
+        // disableReaderMode() again here finds no state, so NfcActivityManager tries to lazily
+        // create one — and its constructor throws IllegalStateException because the activity is
+        // already destroyed by the time onDestroy() runs. This call is best-effort duplicate
+        // cleanup, so swallow that framework throw rather than crash on teardown (e.g. snooze).
+        try {
+            nfcAdapter?.disableReaderMode(this)
+        } catch (_: IllegalStateException) {
+        }
+        unregisterReceiver(teardownReceiver)
     }
 
     // Block volume key events so alarm volume can't be muted
@@ -188,14 +250,16 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         }
     }
 
+    // dismiss/snooze only broadcast — teardownReceiver finishes the activity uniformly, so the
+    // notification's snooze action gets the same treatment as the on-screen button. On snooze the
+    // re-ring is owned by AlarmManager (AlarmReceiver relaunches the UI when the window elapses),
+    // so the device is free to sleep meanwhile.
     private fun dismiss() {
         sendBroadcast(Intent(AlarmService.ACTION_DISMISS).setPackage(packageName))
-        finish()
     }
 
     private fun snooze() {
         sendBroadcast(Intent(AlarmService.ACTION_SNOOZE).setPackage(packageName))
-        // Don't finish — the screen stays on during the silent snooze period
     }
 
 }
@@ -206,7 +270,7 @@ private fun RingingScreen(
     dismissWithoutTag: Boolean,
     onSnooze: () -> Unit,
     onDismiss: () -> Unit,
-    onOpenNfcSettings: () -> Unit,
+    onUnlockToScan: () -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val state by AlarmService.ringState.collectAsState()
@@ -215,18 +279,6 @@ private fun RingingScreen(
     LaunchedEffect(Unit) {
         while (true) {
             currentTime = formattedNow()
-            delay(1000)
-        }
-    }
-
-    // Countdown during snooze
-    var remainingSeconds by remember { mutableIntStateOf(0) }
-    LaunchedEffect(state) {
-        val snoozed = state as? RingState.Snoozed ?: return@LaunchedEffect
-        while (true) {
-            val rem = ((snoozed.untilMs - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
-            remainingSeconds = rem
-            if (rem == 0) break
             delay(1000)
         }
     }
@@ -256,7 +308,6 @@ private fun RingingScreen(
     )
 
     val amber = MaterialTheme.colorScheme.primary
-    val isSnoozed   = state is RingState.Snoozed
     val snoozeCount = state.snoozeCount
     val maxSnoozes  = state.maxSnoozes
 
@@ -340,16 +391,6 @@ private fun RingingScreen(
                             Text(stringResource(R.string.dismiss), style = MaterialTheme.typography.titleMedium)
                         }
                     }
-                    isSnoozed -> {
-                        // Show countdown during silent snooze window
-                        val mm = remainingSeconds / 60
-                        val ss = remainingSeconds % 60
-                        Text(
-                            stringResource(R.string.snoozed_countdown, "%02d:%02d".format(mm, ss)),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = StarWhite.copy(alpha = 0.6f),
-                        )
-                    }
                     snoozeCount >= maxSnoozes -> {
                         // Max snoozes reached — no snooze button, informational text only
                         Text(
@@ -377,14 +418,14 @@ private fun RingingScreen(
 
                 if (!dismissWithoutTag) {
                     OutlinedButton(
-                        onClick = onOpenNfcSettings,
+                        onClick = onUnlockToScan,
                         modifier = Modifier.fillMaxWidth(),
                         colors   = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
                         shape = RoundedCornerShape(12.dp),
                     ) {
-                        Text(stringResource(R.string.enable_nfc))
+                        Text(stringResource(R.string.unlock_to_scan))
                     }
                 }
             }
@@ -392,14 +433,11 @@ private fun RingingScreen(
     }
 }
 
-// Extension to extract snoozeCount / maxSnoozes from either state variant
 private val RingState.snoozeCount: Int get() = when (this) {
     is RingState.Ringing -> snoozeCount
-    is RingState.Snoozed -> snoozeCount
 }
 private val RingState.maxSnoozes: Int get() = when (this) {
     is RingState.Ringing -> maxSnoozes
-    is RingState.Snoozed -> maxSnoozes
 }
 
 private fun formattedNow(): String {

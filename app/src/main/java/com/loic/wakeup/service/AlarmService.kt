@@ -23,11 +23,13 @@ import com.loic.wakeup.R
 import com.loic.wakeup.WakeUpApp
 import com.loic.wakeup.data.AlarmDatabase
 import com.loic.wakeup.data.AlarmRepository
+import com.loic.wakeup.domain.AlarmScheduler
+import com.loic.wakeup.domain.SnoozeCalculator
+import com.loic.wakeup.domain.SnoozeDecision
 import com.loic.wakeup.ui.screens.AlarmRingingActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -35,7 +37,6 @@ import kotlinx.coroutines.launch
 /** State published to the ringing screen so it can adapt its UI. */
 sealed interface RingState {
     data class Ringing(val snoozeCount: Int, val maxSnoozes: Int) : RingState
-    data class Snoozed(val untilMs: Long, val snoozeCount: Int, val maxSnoozes: Int) : RingState
 }
 
 class AlarmService : Service() {
@@ -45,6 +46,7 @@ class AlarmService : Service() {
         const val ACTION_SNOOZE  = "com.loic.wakeup.ACTION_SNOOZE"
         const val NOTIFICATION_ID = 1001
         const val EXTRA_ALARM_ID  = "alarmId"
+        const val EXTRA_IS_SNOOZE = "isSnooze"
 
         @Volatile var isRunning = false
         @Volatile var runningAlarmId = -1
@@ -62,7 +64,11 @@ class AlarmService : Service() {
     private val dismissReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
-                ACTION_DISMISS -> stopSelf()
+                ACTION_DISMISS -> {
+                    // Drop any pending snooze re-ring so a dismissed alarm stays silent.
+                    AlarmScheduler(this@AlarmService).cancelSnooze(currentAlarmId)
+                    stopSelf()
+                }
                 ACTION_SNOOZE  -> handleSnooze()
             }
         }
@@ -79,6 +85,7 @@ class AlarmService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         currentAlarmId  = intent?.getIntExtra(EXTRA_ALARM_ID, -1) ?: -1
+        val isSnoozeRing = intent?.getBooleanExtra(EXTRA_IS_SNOOZE, false) ?: false
         isRunning       = true
         runningAlarmId  = currentAlarmId
 
@@ -116,8 +123,10 @@ class AlarmService : Service() {
             val alarm = repo.getById(currentAlarmId)
             currentRingtoneUri = alarm?.ringtoneUri
             val max = alarm?.maxSnoozes ?: 3
-            repo.setSnoozeCount(currentAlarmId, 0)
-            _ringState.value = RingState.Ringing(0, max)
+            // A snooze re-ring must preserve the running count; a fresh ring resets it.
+            val count = if (isSnoozeRing) (alarm?.snoozeCount ?: 0) else 0
+            if (!isSnoozeRing) repo.setSnoozeCount(currentAlarmId, 0)
+            _ringState.value = RingState.Ringing(count, max)
             startRingtone(currentRingtoneUri)
         }
         startVibration()
@@ -129,25 +138,21 @@ class AlarmService : Service() {
         scope.launch(Dispatchers.IO) {
             val repo  = AlarmRepository(AlarmDatabase.getInstance(this@AlarmService).alarmDao())
             val alarm = repo.getById(currentAlarmId) ?: return@launch
-            if (alarm.snoozeCount >= alarm.maxSnoozes) return@launch
 
-            val newCount = alarm.snoozeCount + 1
-            repo.setSnoozeCount(currentAlarmId, newCount)
-
-            val untilMs = System.currentTimeMillis() + alarm.snoozeDurationSeconds * 1000L
-            stopAudioAndVibration()
-            _ringState.value = RingState.Snoozed(untilMs, newCount, alarm.maxSnoozes)
-
-            val remaining = untilMs - System.currentTimeMillis()
-            if (remaining > 0) delay(remaining)
-
-            if (isRunning) {
-                _ringState.value = RingState.Ringing(newCount, alarm.maxSnoozes)
-                startRingtone(currentRingtoneUri)
-                startVibration()
+            when (val decision = SnoozeCalculator.decide(alarm, System.currentTimeMillis())) {
+                is SnoozeDecision.Reschedule -> {
+                    stopAudioAndVibration()
+                    repo.setSnoozeCount(currentAlarmId, decision.newSnoozeCount)
+                    // Hand the re-ring to AlarmManager so it survives the device sleeping or
+                    // the service being reclaimed during the snooze window. The service stops;
+                    // the re-ring comes back through AlarmReceiver, which wakes the device.
+                    AlarmScheduler(this@AlarmService)
+                        .scheduleAt(alarm, decision.triggerAtMillis, isSnooze = true)
+                    stopSelf()
+                }
+                SnoozeDecision.MaxReached -> { /* keep ringing — no snooze left */ }
             }
         }
-        // Do NOT call stopSelf() — service stays alive during snooze
     }
 
     private fun startRingtone(ringtoneUriString: String?) {
