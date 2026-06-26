@@ -194,8 +194,13 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     }
 
     private fun snooze() {
+        // Ignore taps once snoozes are exhausted — the alarm must only be cleared by a tag.
+        val state = AlarmService.ringState.value
+        if (state.snoozeCount >= state.maxSnoozes) return
         sendBroadcast(Intent(AlarmService.ACTION_SNOOZE).setPackage(packageName))
-        // Don't finish — the screen stays on during the silent snooze period
+        // The service silences and schedules the re-ring through AlarmManager, then stops.
+        // Finish so we don't linger over a stopped service; the re-ring relaunches us.
+        finish()
     }
 
 }

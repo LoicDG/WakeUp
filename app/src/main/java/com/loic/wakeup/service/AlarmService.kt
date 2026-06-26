@@ -17,17 +17,19 @@ import android.os.IBinder
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.loic.wakeup.R
 import com.loic.wakeup.WakeUpApp
 import com.loic.wakeup.data.AlarmDatabase
 import com.loic.wakeup.data.AlarmRepository
+import com.loic.wakeup.domain.AlarmScheduler
 import com.loic.wakeup.ui.screens.AlarmRingingActivity
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -41,10 +43,12 @@ sealed interface RingState {
 class AlarmService : Service() {
 
     companion object {
+        private const val TAG = "AlarmService"
         const val ACTION_DISMISS = "com.loic.wakeup.ACTION_DISMISS"
         const val ACTION_SNOOZE  = "com.loic.wakeup.ACTION_SNOOZE"
         const val NOTIFICATION_ID = 1001
         const val EXTRA_ALARM_ID  = "alarmId"
+        const val EXTRA_IS_SNOOZE = "isSnooze"
 
         @Volatile var isRunning = false
         @Volatile var runningAlarmId = -1
@@ -53,7 +57,12 @@ class AlarmService : Service() {
         val ringState: StateFlow<RingState> = _ringState
     }
 
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    // An uncaught exception in a background coroutine must never crash the alarm
+    // process — that would silently tear down the ringing UI and the service.
+    private val scope = CoroutineScope(
+        Dispatchers.Main + SupervisorJob() +
+            CoroutineExceptionHandler { _, e -> Log.e(TAG, "alarm coroutine failed", e) }
+    )
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private var currentAlarmId: Int = -1
@@ -79,6 +88,7 @@ class AlarmService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         currentAlarmId  = intent?.getIntExtra(EXTRA_ALARM_ID, -1) ?: -1
+        val isSnooze    = intent?.getBooleanExtra(EXTRA_IS_SNOOZE, false) ?: false
         isRunning       = true
         runningAlarmId  = currentAlarmId
 
@@ -116,8 +126,14 @@ class AlarmService : Service() {
             val alarm = repo.getById(currentAlarmId)
             currentRingtoneUri = alarm?.ringtoneUri
             val max = alarm?.maxSnoozes ?: 3
-            repo.setSnoozeCount(currentAlarmId, 0)
-            _ringState.value = RingState.Ringing(0, max)
+            // A snooze re-ring must preserve the running count; a fresh ring resets it.
+            val count = if (isSnooze) {
+                alarm?.snoozeCount ?: 0
+            } else {
+                repo.setSnoozeCount(currentAlarmId, 0)
+                0
+            }
+            _ringState.value = RingState.Ringing(count, max)
             startRingtone(currentRingtoneUri)
         }
         startVibration()
@@ -134,20 +150,16 @@ class AlarmService : Service() {
             val newCount = alarm.snoozeCount + 1
             repo.setSnoozeCount(currentAlarmId, newCount)
 
+            // Re-ring through AlarmManager instead of holding this foreground service
+            // alive across the silent window. A silent service can be reclaimed by the
+            // OS (and START_NOT_STICKY won't restart it), which is what made snooze
+            // appear to "close the app". AlarmManager survives process death.
             val untilMs = System.currentTimeMillis() + alarm.snoozeDurationSeconds * 1000L
+            AlarmScheduler(applicationContext).scheduleAt(alarm, untilMs, isSnooze = true)
+
             stopAudioAndVibration()
-            _ringState.value = RingState.Snoozed(untilMs, newCount, alarm.maxSnoozes)
-
-            val remaining = untilMs - System.currentTimeMillis()
-            if (remaining > 0) delay(remaining)
-
-            if (isRunning) {
-                _ringState.value = RingState.Ringing(newCount, alarm.maxSnoozes)
-                startRingtone(currentRingtoneUri)
-                startVibration()
-            }
+            stopSelf()
         }
-        // Do NOT call stopSelf() — service stays alive during snooze
     }
 
     private fun startRingtone(ringtoneUriString: String?) {
@@ -156,23 +168,41 @@ class AlarmService : Service() {
         } else {
             RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         }
-        mediaPlayer = MediaPlayer().apply {
-            setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            setDataSource(this@AlarmService, uri)
-            isLooping = true
+        if (!playRingtone(uri)) {
+            // The chosen ringtone failed (e.g. a revoked content:// URI); never leave
+            // the alarm silent — fall back to the system default alarm sound.
+            playRingtone(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+        }
+    }
+
+    /** Returns true if playback started, false if it failed (already cleaned up). */
+    private fun playRingtone(uri: Uri?): Boolean {
+        if (uri == null) return false
+        return try {
+            mediaPlayer = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                setDataSource(this@AlarmService, uri)
+                isLooping = true
+                prepare()
+                start()
+            }
             val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
             am.setStreamVolume(
                 AudioManager.STREAM_ALARM,
                 am.getStreamMaxVolume(AudioManager.STREAM_ALARM),
                 0
             )
-            prepare()
-            start()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "failed to play ringtone $uri", e)
+            mediaPlayer?.release()
+            mediaPlayer = null
+            false
         }
     }
 
