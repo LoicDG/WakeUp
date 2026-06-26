@@ -60,7 +60,8 @@ class AlarmReceiver : BroadcastReceiver() {
         context.startActivity(ringingIntent)
 
         val serviceIntent = Intent(context, AlarmService::class.java).apply {
-            putExtra("alarmId", alarmId)
+            putExtra(AlarmService.EXTRA_ALARM_ID, alarmId)
+            putExtra(AlarmService.EXTRA_IS_SNOOZE, isSnooze)
         }
         ContextCompat.startForegroundService(context, serviceIntent)
 

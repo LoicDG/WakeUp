@@ -10,6 +10,8 @@
     <string name="wrong_tag">Wrong tag — scan the registered tag</string>
     <string name="nfc_disabled">NFC is disabled. Enable NFC to dismiss this alarm.</string>
     <string name="enable_nfc">Enable NFC</string>
+    <string name="unlock_to_scan">Unlock to scan</string>
+    <string name="unlock_failed">Couldn\'t unlock — try again to scan your tag</string>
     <string name="register_tag">Register NFC Tag</string>
     <string name="scan_tag_prompt">Scan your NFC tag now…</string>
     <string name="tag_registered">Tag registered</string>
@@ -29,7 +31,6 @@
     <string name="open_settings">Open settings</string>
     <string name="snoozed">Snoozed (%1$d/%2$d)</string>
     <string name="nfc_tag_required">Register an NFC tag in Settings before activating an alarm.</string>
-    <string name="snoozed_countdown">Snoozed · resumes in %s</string>
     <string name="max_snoozes_reached">No snoozes left — scan NFC tag to dismiss</string>
     <string name="nfc_section_title">NFC TAG</string>
     <string name="nfc_using_global_tag">Using global tag</string>

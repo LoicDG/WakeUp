@@ -32,8 +32,14 @@ class AlarmScheduler(private val context: Context) {
         alarmManager.setAlarmClock(AlarmClockInfo(atMillis, showIntent), operation)
     }
 
+    /** Cancels only a pending snooze re-ring, leaving the alarm's regular schedule intact. */
+    fun cancelSnooze(alarmId: Int) {
+        alarmManager.cancel(buildPendingIntent(alarmId, isSnooze = true))
+    }
+
     fun cancel(alarmId: Int) {
         alarmManager.cancel(buildPendingIntent(alarmId))
+        alarmManager.cancel(buildPendingIntent(alarmId, isSnooze = true))
         alarmManager.cancel(buildReenablePendingIntent(alarmId))
     }
 
@@ -42,9 +48,12 @@ class AlarmScheduler(private val context: Context) {
             putExtra("alarmId", alarmId)
             putExtra("isSnooze", isSnooze)
         }
+        // Snooze re-rings use a distinct request code so they never collide with — or
+        // accidentally cancel — the alarm's regular next-occurrence PendingIntent.
+        val requestCode = if (isSnooze) SNOOZE_REQUEST_CODE_OFFSET + alarmId else alarmId
         return PendingIntent.getBroadcast(
             context,
-            alarmId,
+            requestCode,
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -67,5 +76,6 @@ class AlarmScheduler(private val context: Context) {
     private companion object {
         const val ACTION_REENABLE_ALARM = "com.loic.wakeup.action.REENABLE_ALARM"
         const val REENABLE_REQUEST_CODE_OFFSET = 100_000
+        const val SNOOZE_REQUEST_CODE_OFFSET = 200_000
     }
 }
