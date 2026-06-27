@@ -12,11 +12,12 @@ import com.loic.wakeup.data.AlarmDatabase
 import com.loic.wakeup.data.AlarmEntity
 import com.loic.wakeup.data.AlarmRepository
 import com.loic.wakeup.domain.AlarmScheduler
+import com.loic.wakeup.data.SettingsStore
 import com.loic.wakeup.domain.NextTriggerCalculator
+import com.loic.wakeup.ui.components.formatClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 /**
  * Posts the pre-alarm reminder notification 30 minutes before an alarm rings and
@@ -78,7 +79,7 @@ class AlarmReminderReceiver : BroadcastReceiver() {
     }
 
     private fun postNotification(context: Context, alarm: AlarmEntity) {
-        val timeText = String.format(Locale.getDefault(), "%02d:%02d", alarm.hour, alarm.minute)
+        val timeText = formatClock(alarm.hour, alarm.minute, SettingsStore.use24Hour.value)
         val contentText = if (alarm.label.isNotBlank()) "${alarm.label} • $timeText" else timeText
 
         val skipTodayOnly = alarm.daysMask != 0

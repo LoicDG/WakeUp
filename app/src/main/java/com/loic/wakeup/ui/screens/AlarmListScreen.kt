@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.loic.wakeup.data.AlarmEntity
 import com.loic.wakeup.domain.NextTriggerCalculator
+import com.loic.wakeup.ui.components.TimeText
 import com.loic.wakeup.ui.theme.auroraSky
 import com.loic.wakeup.ui.theme.frostedPanel
 import com.loic.wakeup.ui.viewmodel.AlarmListViewModel
@@ -202,8 +203,9 @@ private fun NextAlarmHero(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(
-                text = "%02d:%02d".format(nextAlarm.hour, nextAlarm.minute),
+            TimeText(
+                hour = nextAlarm.hour,
+                minute = nextAlarm.minute,
                 style = MaterialTheme.typography.headlineSmall,
                 color = MaterialTheme.colorScheme.onBackground,
             )
@@ -236,8 +238,9 @@ private fun AlarmCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "%02d:%02d".format(alarm.hour, alarm.minute),
+                    TimeText(
+                        hour = alarm.hour,
+                        minute = alarm.minute,
                         style = MaterialTheme.typography.headlineLarge,
                         color = if (alarm.enabled)
                             MaterialTheme.colorScheme.primary

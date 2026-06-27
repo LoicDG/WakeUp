@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.loic.wakeup.R
+import com.loic.wakeup.data.SettingsStore
 import com.loic.wakeup.ui.nfc.NfcScanningEffect
 import com.loic.wakeup.ui.theme.auroraSky
 import com.loic.wakeup.ui.theme.frostedPanel
@@ -168,6 +169,47 @@ fun NfcSettingsScreen(
                                 Text(stringResource(R.string.cancel))
                             }
                         }
+                    }
+                }
+            }
+
+            // Time format section
+            val use24Hour by SettingsStore.use24Hour.collectAsState()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .frostedPanel(RoundedCornerShape(24.dp)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text(
+                        "TIME FORMAT",
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val segmentColors = SegmentedButtonDefaults.colors(
+                        activeContainerColor = MaterialTheme.colorScheme.primary,
+                        activeContentColor = MaterialTheme.colorScheme.onPrimary,
+                        activeBorderColor = MaterialTheme.colorScheme.primary,
+                        inactiveContainerColor = Color.Transparent,
+                        inactiveContentColor = MaterialTheme.colorScheme.onSurface,
+                        inactiveBorderColor = MaterialTheme.colorScheme.outline,
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        SegmentedButton(
+                            selected = !use24Hour,
+                            onClick = { SettingsStore.setUse24Hour(false) },
+                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                            colors = segmentColors,
+                        ) { Text(stringResource(R.string.time_format_12h)) }
+                        SegmentedButton(
+                            selected = use24Hour,
+                            onClick = { SettingsStore.setUse24Hour(true) },
+                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                            colors = segmentColors,
+                        ) { Text(stringResource(R.string.time_format_24h)) }
                     }
                 }
             }
