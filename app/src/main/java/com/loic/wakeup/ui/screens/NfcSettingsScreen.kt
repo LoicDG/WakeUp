@@ -4,13 +4,17 @@ import android.content.Intent
 import android.provider.Settings
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -18,7 +22,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.loic.wakeup.R
 import com.loic.wakeup.ui.nfc.NfcScanningEffect
+import com.loic.wakeup.ui.theme.auroraSky
+import com.loic.wakeup.ui.theme.frostedPanel
+import com.loic.wakeup.ui.theme.liquidGlass
 import com.loic.wakeup.ui.viewmodel.NfcSettingsViewModel
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,41 +44,36 @@ fun NfcSettingsScreen(
     val coroutineScope = rememberCoroutineScope()
     var showClearConfirm by remember { mutableStateOf(false) }
     var clearCount by remember { mutableIntStateOf(0) }
+    val hazeState = remember { HazeState() }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        stringResource(R.string.settings),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
-                ),
-            )
-        }
+        containerColor = Color.Transparent,
     ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .auroraSky()
+                .hazeSource(hazeState),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 24.dp, vertical = 8.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
+            // Clears the pinned glass bar; content scrolls up under it.
+            Spacer(Modifier.height(64.dp))
             // NFC tag section
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .frostedPanel(RoundedCornerShape(24.dp)),
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
@@ -169,9 +173,10 @@ fun NfcSettingsScreen(
             }
 
             // Permissions section
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .frostedPanel(RoundedCornerShape(24.dp)),
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
@@ -204,7 +209,34 @@ fun NfcSettingsScreen(
                     ) { Text(stringResource(R.string.full_screen_intent_permission)) }
                 }
             }
+
+            Spacer(Modifier.height(8.dp))
         }
+        }
+
+        // Pinned liquid-glass top bar (sibling overlay) the settings scroll up under.
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .liquidGlass(hazeState, RectangleShape)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+            Text(
+                stringResource(R.string.settings),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+        }
+    }
     }
 }
 

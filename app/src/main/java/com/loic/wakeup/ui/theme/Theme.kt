@@ -15,8 +15,22 @@ val DeepNavy = Color(0xFF0F1C30)
 val NavyVariant = Color(0xFF192844)
 val NavyOutline = Color(0xFF253654)
 val StarWhite = Color(0xFFE2EAFF)
-val SlateBlue = Color(0xFF7893B8)
+val SlateBlue = Color(0xFFA0B8DC) // muted blue, lifted so labels stay legible over the dawn glow
 val MorningBlue = Color(0xFF5B8FB9)
+
+// Aurora — the living light the glass refracts. Warm dawn near the horizon,
+// cool indigo high in the sky, deepening to near-black at the very top.
+val DawnGlow = Color(0xFFFF8A4C)      // warm amber-coral, low on screen
+val IndigoGlow = Color(0xFF2A3F73)    // cool aurora, upper screen
+val DeepNight = Color(0xFF050A14)     // darkest sky, top edge
+
+// Liquid glass — translucent tints + specular edge. Kept low-alpha so the
+// blurred aurora reads through the panel rather than being painted over.
+val GlassTint = Color(0x14FFFFFF)         // ~8% white frost sheen, painted over the dark fill
+val GlassFill = Color(0x99101D31)         // dark frosted base under the sheen — tames the dawn glow so text stays legible
+val GlassFillFallback = Color(0xCC101D31) // pre-API-31 scrim (no real blur)
+val GlassEdgeHigh = Color(0x40FFFFFF)     // bright specular top-left edge
+val GlassEdgeLow = Color(0x0DFFFFFF)      // faded bottom-right edge
 
 private val WakeUpColors = darkColorScheme(
     primary = Amber,

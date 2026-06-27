@@ -9,6 +9,7 @@ import com.loic.wakeup.R
 class WakeUpApp : Application() {
     companion object {
         const val ALARM_CHANNEL_ID = "wakeup_alarms"
+        const val REMINDER_CHANNEL_ID = "wakeup_reminders"
     }
 
     override fun onCreate() {
@@ -28,8 +29,17 @@ class WakeUpApp : Application() {
                 enableVibration(true)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
+            val reminderChannel = NotificationChannel(
+                REMINDER_CHANNEL_ID,
+                getString(R.string.reminder_channel_name),
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = getString(R.string.reminder_channel_description)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            }
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(channel)
+            nm.createNotificationChannel(reminderChannel)
         }
     }
 }

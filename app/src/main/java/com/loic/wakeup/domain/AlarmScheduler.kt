@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import com.loic.wakeup.data.AlarmEntity
 import com.loic.wakeup.receiver.AlarmReceiver
+import com.loic.wakeup.receiver.AlarmReminderReceiver
 
 class AlarmScheduler(private val context: Context) {
 
@@ -18,6 +19,23 @@ class AlarmScheduler(private val context: Context) {
         val operation = buildPendingIntent(alarm.id)
         val showIntent = buildPendingIntent(alarm.id)
         alarmManager.setAlarmClock(AlarmClockInfo(nextAt, showIntent), operation)
+        scheduleReminder(alarm.id, nextAt)
+    }
+
+    /**
+     * Schedules the pre-alarm reminder notification 30 minutes before [triggerAtMillis].
+     * Uses setExactAndAllowWhileIdle (not setAlarmClock) so it never hijacks the system's
+     * user-facing "next alarm" indicator. Skipped if the reminder time is already in the past
+     * (alarm set <30 min out, or rebooted inside the window).
+     */
+    private fun scheduleReminder(alarmId: Int, triggerAtMillis: Long) {
+        val reminderAt = triggerAtMillis - REMINDER_LEAD_MILLIS
+        if (reminderAt <= System.currentTimeMillis()) return
+        alarmManager.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            reminderAt,
+            buildReminderPendingIntent(alarmId)
+        )
     }
 
     fun scheduleAt(alarm: AlarmEntity, atMillis: Long, isSnooze: Boolean = false) {
@@ -41,6 +59,20 @@ class AlarmScheduler(private val context: Context) {
         alarmManager.cancel(buildPendingIntent(alarmId))
         alarmManager.cancel(buildPendingIntent(alarmId, isSnooze = true))
         alarmManager.cancel(buildReenablePendingIntent(alarmId))
+        alarmManager.cancel(buildReminderPendingIntent(alarmId))
+    }
+
+    private fun buildReminderPendingIntent(alarmId: Int): PendingIntent {
+        val intent = Intent(context, AlarmReminderReceiver::class.java).apply {
+            action = AlarmReminderReceiver.ACTION_SHOW_REMINDER
+            putExtra("alarmId", alarmId)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            REMINDER_REQUEST_CODE_OFFSET + alarmId,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
     }
 
     private fun buildPendingIntent(alarmId: Int, isSnooze: Boolean = false): PendingIntent {
@@ -77,5 +109,7 @@ class AlarmScheduler(private val context: Context) {
         const val ACTION_REENABLE_ALARM = "com.loic.wakeup.action.REENABLE_ALARM"
         const val REENABLE_REQUEST_CODE_OFFSET = 100_000
         const val SNOOZE_REQUEST_CODE_OFFSET = 200_000
+        const val REMINDER_REQUEST_CODE_OFFSET = 300_000
+        const val REMINDER_LEAD_MILLIS = 30L * 60L * 1000L
     }
 }

@@ -105,7 +105,13 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 ## UI theming (`ui/theme` package)
 
 - `Theme.kt`
-  - Compose theme definitions, color scheme, typography, and dark-only styling used across the app.
+  - Compose theme definitions, color scheme, typography, and dark-only styling used across the app. Defines the pre-dawn palette plus the aurora glow colors (`DawnGlow`, `IndigoGlow`, `DeepNight`) and liquid-glass tokens (`GlassTint`, `GlassFillFallback`, `GlassEdgeHigh`, `GlassEdgeLow`).
+- `Glass.kt`
+  - Liquid-glass design system built on the Haze library (`dev.chrisbanes.haze` 1.3.1, real backdrop blur on API 31+, translucent scrim fallback below). Three primitives:
+    - `Modifier.auroraSky()` — draws the pre-dawn sky gradient with warm/cool radial glows; put it on the layer also marked `hazeSource`.
+    - `Modifier.frostedPanel(shape)` — dark frosted fill (`GlassFill`) under a white sheen (`GlassTint`) + specular hairline, **no** blur; for panels that sit over the static aurora (cards, hero, form sections). The dark fill tames the lower-left dawn glow so muted text stays legible.
+    - `Modifier.liquidGlass(hazeState, shape)` — real Haze backdrop blur + specular hairline; reserved for a surface that overlaps moving content (the pinned top bars on the edit/NFC screens the form scrolls under, or the ringing buttons over the animated pulse). The edit/NFC bars use `RectangleShape` (flat full-width strip).
+  - Screen pattern (edit/NFC): an inner `Box` carries `auroraSky() + hazeSource(state)` and wraps the scrolling content; the pinned `liquidGlass` bar is a **sibling** overlay drawn over it (source and effect must be siblings, never parent/child). The alarm list has no pinned bar — its title and a compact "next alarm" info strip scroll with the list, directly on the aurora.
 
 ---
 

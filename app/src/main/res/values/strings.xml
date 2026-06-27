@@ -46,4 +46,9 @@
     <string name="clear_global_tag_confirm_title">Disable %1$d alarm(s)?</string>
     <string name="clear_global_tag_confirm_body">These alarms have no custom tag and will be disabled.</string>
     <string name="clear_global_tag_confirm_ok">Disable</string>
+    <string name="reminder_channel_name">Alarm reminders</string>
+    <string name="reminder_channel_description">Heads-up 30 minutes before an alarm rings</string>
+    <string name="reminder_notification_title">Alarm in 30 minutes</string>
+    <string name="reminder_action_skip_today">Skip today</string>
+    <string name="reminder_action_turn_off">Turn off</string>
 </resources>

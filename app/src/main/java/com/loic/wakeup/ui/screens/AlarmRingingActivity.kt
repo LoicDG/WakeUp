@@ -22,6 +22,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,7 +31,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.loic.wakeup.R
@@ -39,9 +43,14 @@ import com.loic.wakeup.data.AlarmRepository
 import com.loic.wakeup.data.NfcTagStore
 import com.loic.wakeup.service.AlarmService
 import com.loic.wakeup.service.RingState
+import androidx.compose.ui.semantics.Role
 import com.loic.wakeup.ui.theme.Midnight
 import com.loic.wakeup.ui.theme.StarWhite
 import com.loic.wakeup.ui.theme.WakeUpTheme
+import com.loic.wakeup.ui.theme.auroraSky
+import com.loic.wakeup.ui.theme.liquidGlass
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -310,17 +319,25 @@ private fun RingingScreen(
     val amber = MaterialTheme.colorScheme.primary
     val snoozeCount = state.snoozeCount
     val maxSnoozes  = state.maxSnoozes
+    val hazeState = remember { HazeState() }
 
     Scaffold(
-        containerColor = Midnight,
+        containerColor = Color.Transparent,
         snackbarHost   = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentAlignment = Alignment.Center,
         ) {
+            // Aurora + pulsing rings + clock — the live scene the glass buttons refract.
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .auroraSky()
+                    .hazeSource(hazeState),
+                contentAlignment = Alignment.Center,
+            ) {
             // Pulsing rings
             Box(
                 modifier = Modifier
@@ -356,6 +373,7 @@ private fun RingingScreen(
                     color = StarWhite,
                 )
             }
+            }
 
             // Bottom actions
             Column(
@@ -377,19 +395,12 @@ private fun RingingScreen(
 
                 when {
                     dismissWithoutTag -> {
-                        Button(
+                        GlassButton(
+                            text = stringResource(R.string.dismiss),
                             onClick = onDismiss,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor   = MaterialTheme.colorScheme.onSurface,
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                        ) {
-                            Text(stringResource(R.string.dismiss), style = MaterialTheme.typography.titleMedium)
-                        }
+                            hazeState = hazeState,
+                            contentColor = StarWhite,
+                        )
                     }
                     snoozeCount >= maxSnoozes -> {
                         // Max snoozes reached — no snooze button, informational text only
@@ -400,36 +411,47 @@ private fun RingingScreen(
                         )
                     }
                     else -> {
-                        Button(
+                        GlassButton(
+                            text = stringResource(R.string.snooze),
                             onClick = onSnooze,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor   = MaterialTheme.colorScheme.onSurface,
-                            ),
-                            shape = RoundedCornerShape(12.dp),
-                        ) {
-                            Text(stringResource(R.string.snooze), style = MaterialTheme.typography.titleMedium)
-                        }
+                            hazeState = hazeState,
+                            contentColor = StarWhite,
+                        )
                     }
                 }
 
                 if (!dismissWithoutTag) {
-                    OutlinedButton(
+                    GlassButton(
+                        text = stringResource(R.string.unlock_to_scan),
                         onClick = onUnlockToScan,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors   = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Text(stringResource(R.string.unlock_to_scan))
-                    }
+                        hazeState = hazeState,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        height = 48.dp,
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun GlassButton(
+    text: String,
+    onClick: () -> Unit,
+    hazeState: HazeState,
+    contentColor: Color,
+    height: Dp = 56.dp,
+    shape: Shape = RoundedCornerShape(16.dp),
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height)
+            .liquidGlass(hazeState, shape, blurRadius = 16.dp)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, style = MaterialTheme.typography.titleMedium, color = contentColor)
     }
 }
 
