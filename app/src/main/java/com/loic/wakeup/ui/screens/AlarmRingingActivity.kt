@@ -71,9 +71,10 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     // Cleared in onResume(), which fires on every return path (unlock success, cancel, or error).
     @Volatile private var dismissingKeyguard = false
 
-    // Finish whenever the alarm is snoozed or dismissed — from anywhere (in-app button, the
-    // notification action, or an NFC scan). The service tears itself down on those actions, so
-    // the activity must not linger as a zombie ringing screen with a now-dead snooze button.
+    // Finish only when the alarm is dismissed — from anywhere (in-app NFC scan or notification).
+    // Snooze no longer finishes the activity: the service stays alive in a quiet Snoozed state and
+    // the screen stays up so the NFC tag can dismiss the alarm before it re-rings. The UI reacts to
+    // that transition via AlarmService.ringState.
     private val teardownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) = finish()
     }
@@ -88,10 +89,7 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         ContextCompat.registerReceiver(
             this,
             teardownReceiver,
-            IntentFilter().apply {
-                addAction(AlarmService.ACTION_DISMISS)
-                addAction(AlarmService.ACTION_SNOOZE)
-            },
+            IntentFilter(AlarmService.ACTION_DISMISS),
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
 
@@ -319,7 +317,25 @@ private fun RingingScreen(
     val amber = MaterialTheme.colorScheme.primary
     val snoozeCount = state.snoozeCount
     val maxSnoozes  = state.maxSnoozes
+    val snoozedState = state as? RingState.Snoozed
+    val isSnoozed = snoozedState != null
     val hazeState = remember { HazeState() }
+
+    // While snoozed, count down to the re-ring so the user knows how long they have to scan.
+    var snoozeRemaining by remember { mutableStateOf("") }
+    LaunchedEffect(snoozedState?.reRingAtMillis) {
+        val reRingAt = snoozedState?.reRingAtMillis
+        if (reRingAt == null) {
+            snoozeRemaining = ""
+        } else {
+            while (true) {
+                val secs = ((reRingAt - System.currentTimeMillis()) / 1000L).coerceAtLeast(0)
+                snoozeRemaining = "%d:%02d".format(secs / 60, secs % 60)
+                if (secs <= 0) break
+                delay(1000)
+            }
+        }
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -363,7 +379,7 @@ private fun RingingScreen(
                 verticalArrangement  = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
-                    "WAKE UP",
+                    if (isSnoozed) stringResource(R.string.snoozed_label) else "WAKE UP",
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 6.sp),
                     color = amber.copy(alpha = 0.75f),
                 )
@@ -400,6 +416,14 @@ private fun RingingScreen(
                             onClick = onDismiss,
                             hazeState = hazeState,
                             contentColor = StarWhite,
+                        )
+                    }
+                    isSnoozed -> {
+                        // Quietly waiting to re-ring — no snooze button, just the countdown.
+                        Text(
+                            stringResource(R.string.snoozed_rerings_in, snoozeRemaining),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = StarWhite.copy(alpha = 0.6f),
                         )
                     }
                     snoozeCount >= maxSnoozes -> {
@@ -457,9 +481,11 @@ private fun GlassButton(
 
 private val RingState.snoozeCount: Int get() = when (this) {
     is RingState.Ringing -> snoozeCount
+    is RingState.Snoozed -> snoozeCount
 }
 private val RingState.maxSnoozes: Int get() = when (this) {
     is RingState.Ringing -> maxSnoozes
+    is RingState.Snoozed -> maxSnoozes
 }
 
 private fun formattedNow(): String {

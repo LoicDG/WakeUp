@@ -37,6 +37,8 @@ import kotlinx.coroutines.launch
 /** State published to the ringing screen so it can adapt its UI. */
 sealed interface RingState {
     data class Ringing(val snoozeCount: Int, val maxSnoozes: Int) : RingState
+    /** Alarm is quietly waiting to re-ring at [reRingAtMillis]; the screen stays up for an NFC dismiss. */
+    data class Snoozed(val snoozeCount: Int, val maxSnoozes: Int, val reRingAtMillis: Long) : RingState
 }
 
 class AlarmService : Service() {
@@ -61,6 +63,12 @@ class AlarmService : Service() {
     private var currentAlarmId: Int = -1
     private var currentRingtoneUri: String? = null
 
+    // True from the moment a snooze is accepted until the re-ring restarts the alarm. Guards against
+    // a rapid second snooze tap (or the notification action) firing handleSnooze twice — which would
+    // double-increment the count and schedule two re-rings. onReceive runs on the main thread, so the
+    // check-and-set below is effectively atomic across broadcasts.
+    @Volatile private var snoozing = false
+
     private val dismissReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
@@ -69,7 +77,10 @@ class AlarmService : Service() {
                     AlarmScheduler(this@AlarmService).cancelSnooze(currentAlarmId)
                     stopSelf()
                 }
-                ACTION_SNOOZE  -> handleSnooze()
+                ACTION_SNOOZE  -> if (!snoozing) {
+                    snoozing = true
+                    handleSnooze()
+                }
             }
         }
     }
@@ -88,33 +99,10 @@ class AlarmService : Service() {
         val isSnoozeRing = intent?.getBooleanExtra(EXTRA_IS_SNOOZE, false) ?: false
         isRunning       = true
         runningAlarmId  = currentAlarmId
+        // A ring (fresh or snooze re-ring) ends any snooze window — re-arm the snooze guard.
+        snoozing        = false
 
-        val ringingIntent = Intent(this, AlarmRingingActivity::class.java).apply {
-            putExtra(EXTRA_ALARM_ID, currentAlarmId)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        val fullScreenPi = PendingIntent.getActivity(
-            this, 0, ringingIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val snoozePi = PendingIntent.getBroadcast(
-            this, 1, Intent(ACTION_SNOOZE).setPackage(packageName),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val notification = NotificationCompat.Builder(this, WakeUpApp.ALARM_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle(getString(R.string.alarm_notification_title))
-            .setContentText(getString(R.string.alarm_notification_text))
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setContentIntent(fullScreenPi)
-            .setFullScreenIntent(fullScreenPi, true)
-            .setOngoing(true)
-            .addAction(android.R.drawable.ic_media_pause, getString(R.string.snooze), snoozePi)
-            .build()
-
-        startForeground(NOTIFICATION_ID, notification)
+        startForeground(NOTIFICATION_ID, buildNotification(snoozed = false))
         // AlarmReceiver already launched the activity in the broadcast window.
         // fullScreenIntent handles the locked-screen case via the notification above.
 
@@ -137,22 +125,68 @@ class AlarmService : Service() {
     private fun handleSnooze() {
         scope.launch(Dispatchers.IO) {
             val repo  = AlarmRepository(AlarmDatabase.getInstance(this@AlarmService).alarmDao())
-            val alarm = repo.getById(currentAlarmId) ?: return@launch
+            val alarm = repo.getById(currentAlarmId)
+            if (alarm == null) { snoozing = false; return@launch }
 
             when (val decision = SnoozeCalculator.decide(alarm, System.currentTimeMillis())) {
                 is SnoozeDecision.Reschedule -> {
                     stopAudioAndVibration()
                     repo.setSnoozeCount(currentAlarmId, decision.newSnoozeCount)
                     // Hand the re-ring to AlarmManager so it survives the device sleeping or
-                    // the service being reclaimed during the snooze window. The service stops;
-                    // the re-ring comes back through AlarmReceiver, which wakes the device.
+                    // the service being reclaimed during the snooze window — a safety net even
+                    // though the service now stays alive. The service keeps running (quietly) so
+                    // the ringing screen stays up and the NFC tag can still dismiss the alarm
+                    // mid-snooze; the re-ring comes back through AlarmReceiver to restart audio.
                     AlarmScheduler(this@AlarmService)
                         .scheduleAt(alarm, decision.triggerAtMillis, isSnooze = true)
-                    stopSelf()
+                    _ringState.value = RingState.Snoozed(
+                        snoozeCount = decision.newSnoozeCount,
+                        maxSnoozes = alarm.maxSnoozes,
+                        reRingAtMillis = decision.triggerAtMillis,
+                    )
+                    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    nm.notify(NOTIFICATION_ID, buildNotification(snoozed = true))
                 }
-                SnoozeDecision.MaxReached -> { /* keep ringing — no snooze left */ }
+                SnoozeDecision.MaxReached -> {
+                    // No snooze left — keep ringing. Release the guard so the user can retry later.
+                    snoozing = false
+                }
             }
         }
+    }
+
+    private fun buildNotification(snoozed: Boolean): android.app.Notification {
+        val ringingIntent = Intent(this, AlarmRingingActivity::class.java).apply {
+            putExtra(EXTRA_ALARM_ID, currentAlarmId)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val fullScreenPi = PendingIntent.getActivity(
+            this, 0, ringingIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val builder = NotificationCompat.Builder(this, WakeUpApp.ALARM_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setContentTitle(getString(R.string.alarm_notification_title))
+            .setContentText(getString(
+                if (snoozed) R.string.alarm_notification_snoozed_text
+                else R.string.alarm_notification_text
+            ))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setContentIntent(fullScreenPi)
+            .setFullScreenIntent(fullScreenPi, true)
+            .setOngoing(true)
+
+        // Only offer Snooze while actually ringing; during the snooze window it would be redundant.
+        if (!snoozed) {
+            val snoozePi = PendingIntent.getBroadcast(
+                this, 1, Intent(ACTION_SNOOZE).setPackage(packageName),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+            builder.addAction(android.R.drawable.ic_media_pause, getString(R.string.snooze), snoozePi)
+        }
+        return builder.build()
     }
 
     private fun startRingtone(ringtoneUriString: String?) {
