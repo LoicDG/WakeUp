@@ -46,6 +46,10 @@ class AlarmReceiver : BroadcastReceiver() {
             return
         }
 
+        // The alarm is ringing now — drop any reminder notification still showing for it.
+        (context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager)
+            .cancel(AlarmReminderReceiver.REMINDER_NOTIFICATION_BASE + alarmId)
+
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
         val wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WakeUp:AlarmReceiver")
         wl.acquire(10_000L)

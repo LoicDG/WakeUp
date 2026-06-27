@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -38,7 +39,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.loic.wakeup.R
 import com.loic.wakeup.data.NfcTagStore
 import com.loic.wakeup.ui.nfc.NfcScanningEffect
+import com.loic.wakeup.ui.theme.Midnight
+import com.loic.wakeup.ui.theme.auroraSky
+import com.loic.wakeup.ui.theme.frostedPanel
+import com.loic.wakeup.ui.theme.liquidGlass
 import com.loic.wakeup.ui.viewmodel.AlarmEditViewModel
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlin.math.abs
@@ -57,6 +64,7 @@ fun AlarmEditScreen(
     val globalUid = remember { NfcTagStore(context).getUid() }
     val snackbarHostState = remember { SnackbarHostState() }
 
+    val hazeState = remember { HazeState() }
     var showNfcSheet by remember { mutableStateOf(false) }
     var nfcScanning by remember { mutableStateOf(false) }
 
@@ -114,79 +122,77 @@ fun AlarmEditScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         snackbarHost   = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (alarmId == null) "New Alarm" else "Edit Alarm",
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onDone) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    TextButton(
-                        onClick = { vm.save(onDone) },
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = MaterialTheme.colorScheme.primary,
-                        ),
-                    ) {
-                        Text(
-                            stringResource(R.string.save),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onBackground,
-                ),
-            )
-        }
     ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding),
+        ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .auroraSky()
+                .hazeSource(hazeState),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 24.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(28.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            // Wheel time picker
-            Row(
+            // Clears the pinned glass bar; the form scrolls up under it.
+            Spacer(Modifier.height(64.dp))
+
+            // Wheel time picker on a glass slab. Each wheel keeps its own amber
+            // selection band; a single fade spans the whole slab — dark at the top
+            // and bottom edges, clear across the selection — so the wheels dissolve
+            // into the panel with no hard edge.
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
+                    .frostedPanel(RoundedCornerShape(28.dp)),
+                contentAlignment = Alignment.Center,
             ) {
-                WheelPicker(
-                    count = 24,
-                    value = alarm.hour,
-                    onValueChange = { vm.update(alarm.copy(hour = it)) },
-                    modifier = Modifier.width(100.dp),
-                )
-                Text(
-                    ":",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                )
-                WheelPicker(
-                    count = 60,
-                    value = alarm.minute,
-                    onValueChange = { vm.update(alarm.copy(minute = it)) },
-                    modifier = Modifier.width(100.dp),
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    WheelPicker(
+                        count = 24,
+                        value = alarm.hour,
+                        onValueChange = { vm.update(alarm.copy(hour = it)) },
+                        modifier = Modifier.width(100.dp),
+                    )
+                    Text(
+                        ":",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                    )
+                    WheelPicker(
+                        count = 60,
+                        value = alarm.minute,
+                        onValueChange = { vm.update(alarm.copy(minute = it)) },
+                        modifier = Modifier.width(100.dp),
+                    )
+                }
+                // Full-slab depth fade, dissolving the edge numbers into the panel.
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                0f to Midnight.copy(alpha = 0.6f),
+                                0.35f to Color.Transparent,
+                                0.65f to Color.Transparent,
+                                1f to Midnight.copy(alpha = 0.6f),
+                            )
+                        )
                 )
             }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
             // Label
             OutlinedTextField(
@@ -207,7 +213,13 @@ fun AlarmEditScreen(
             )
 
             // Repeat days
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .frostedPanel(RoundedCornerShape(24.dp))
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(
                     "REPEAT",
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
@@ -220,7 +232,13 @@ fun AlarmEditScreen(
             }
 
             // Ringtone
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .frostedPanel(RoundedCornerShape(24.dp))
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(
                     "RINGTONE",
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
@@ -251,7 +269,13 @@ fun AlarmEditScreen(
             }
 
             // NFC tag override
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .frostedPanel(RoundedCornerShape(24.dp))
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(
                     stringResource(R.string.nfc_section_title),
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
@@ -354,12 +378,25 @@ fun AlarmEditScreen(
                                 )
                             )
                         },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurface,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
+                            uncheckedBorderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
                     )
                 }
             }
 
             // Snooze
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .frostedPanel(RoundedCornerShape(24.dp))
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(
                     "SNOOZE",
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
@@ -388,6 +425,40 @@ fun AlarmEditScreen(
 
             Spacer(Modifier.height(16.dp))
         }
+        }
+
+        // Pinned liquid-glass top bar (sibling overlay) the form scrolls up under.
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .liquidGlass(hazeState, RectangleShape)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onDone) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+            Text(
+                if (alarmId == null) "New Alarm" else "Edit Alarm",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                onClick = { vm.save(onDone) },
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ),
+            ) {
+                Text(stringResource(R.string.save), style = MaterialTheme.typography.titleMedium)
+            }
+        }
+    }
     }
 }
 
@@ -409,7 +480,6 @@ private fun WheelPicker(
     val initialIndex = (count * 5_000 + value - halfVisible).coerceAtLeast(0)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState, snapPosition = SnapPosition.Center)
-    val background = MaterialTheme.colorScheme.background
 
     val currentValue by rememberUpdatedState(value)
     val currentOnValueChange by rememberUpdatedState(onValueChange)
@@ -444,15 +514,15 @@ private fun WheelPicker(
         modifier = modifier.height(itemHeight * visibleCount),
         contentAlignment = Alignment.Center,
     ) {
-        // Highlight band behind the selected item
+        // Amber-tinted band behind the selected item (one per wheel)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(itemHeight)
-                .padding(horizontal = 2.dp)
+                .padding(horizontal = 10.dp)
                 .background(
-                    MaterialTheme.colorScheme.surfaceVariant,
-                    RoundedCornerShape(10.dp),
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                    RoundedCornerShape(16.dp),
                 )
         )
 
@@ -493,27 +563,6 @@ private fun WheelPicker(
                 }
             }
         }
-
-        // Top fade overlay
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(itemHeight * halfVisible)
-                .background(
-                    Brush.verticalGradient(listOf(background, Color.Transparent))
-                )
-        )
-        // Bottom fade overlay
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(itemHeight * halfVisible)
-                .background(
-                    Brush.verticalGradient(listOf(Color.Transparent, background))
-                )
-        )
     }
 }
 

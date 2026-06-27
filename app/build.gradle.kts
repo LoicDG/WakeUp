@@ -69,6 +69,7 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
     implementation(libs.security.crypto)
+    implementation(libs.haze)
     debugImplementation(libs.androidx.ui.tooling)
     testImplementation(libs.junit)
 }
