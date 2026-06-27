@@ -29,7 +29,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
@@ -38,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.loic.wakeup.R
 import com.loic.wakeup.data.NfcTagStore
+import com.loic.wakeup.data.SettingsStore
 import com.loic.wakeup.ui.nfc.NfcScanningEffect
 import com.loic.wakeup.ui.theme.Midnight
 import com.loic.wakeup.ui.theme.auroraSky
@@ -48,6 +55,7 @@ import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,6 +68,7 @@ fun AlarmEditScreen(
     LaunchedEffect(alarmId) { alarmId?.let { vm.load(it) } }
 
     val alarm by vm.alarm.collectAsState()
+    val use24Hour by SettingsStore.use24Hour.collectAsState()
     val context = LocalContext.current
     val globalUid = remember { NfcTagStore(context).getUid() }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -150,9 +159,27 @@ fun AlarmEditScreen(
             // selection band; a single fade spans the whole slab — dark at the top
             // and bottom edges, clear across the selection — so the wheels dissolve
             // into the panel with no hard edge.
+            // Swallow any scroll the wheels don't use (e.g. dragging the short
+            // AM/PM wheel past its ends) so the form behind doesn't scroll while
+            // the user is setting the time.
+            val pickerNestedScroll = remember {
+                object : NestedScrollConnection {
+                    override fun onPostScroll(
+                        consumed: Offset,
+                        available: Offset,
+                        source: NestedScrollSource,
+                    ): Offset = available
+
+                    override suspend fun onPostFling(
+                        consumed: Velocity,
+                        available: Velocity,
+                    ): Velocity = available
+                }
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .nestedScroll(pickerNestedScroll)
                     .frostedPanel(RoundedCornerShape(28.dp)),
                 contentAlignment = Alignment.Center,
             ) {
@@ -160,24 +187,59 @@ fun AlarmEditScreen(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    WheelPicker(
-                        count = 24,
-                        value = alarm.hour,
-                        onValueChange = { vm.update(alarm.copy(hour = it)) },
-                        modifier = Modifier.width(100.dp),
-                    )
-                    Text(
-                        ":",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                    )
-                    WheelPicker(
-                        count = 60,
-                        value = alarm.minute,
-                        onValueChange = { vm.update(alarm.copy(minute = it)) },
-                        modifier = Modifier.width(100.dp),
-                    )
+                    if (use24Hour) {
+                        WheelPicker(
+                            count = 24,
+                            value = alarm.hour,
+                            onValueChange = { vm.update(alarm.copy(hour = it)) },
+                            modifier = Modifier.width(100.dp),
+                        )
+                        Text(
+                            ":",
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                        )
+                        WheelPicker(
+                            count = 60,
+                            value = alarm.minute,
+                            onValueChange = { vm.update(alarm.copy(minute = it)) },
+                            modifier = Modifier.width(100.dp),
+                        )
+                    } else {
+                        // Storage stays 24-hour; these wheels show a 12-hour clock
+                        // plus a separate AM/PM wheel.
+                        val isPm = alarm.hour >= 12
+                        val hour12 = ((alarm.hour + 11) % 12) + 1   // 1..12
+                        WheelPicker(
+                            count = 12,
+                            value = hour12 - 1,
+                            onValueChange = { vm.update(alarm.copy(hour = to24Hour(it + 1, isPm))) },
+                            label = { (it + 1).toString() },
+                            modifier = Modifier.width(76.dp),
+                        )
+                        Text(
+                            ":",
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                        )
+                        WheelPicker(
+                            count = 60,
+                            value = alarm.minute,
+                            onValueChange = { vm.update(alarm.copy(minute = it)) },
+                            modifier = Modifier.width(76.dp),
+                        )
+                        WheelPicker(
+                            count = 2,
+                            value = if (isPm) 1 else 0,
+                            onValueChange = { vm.update(alarm.copy(hour = to24Hour(hour12, it == 1))) },
+                            label = { if (it == 0) "AM" else "PM" },
+                            loop = false,
+                            textStyle = MaterialTheme.typography.titleMedium.copy(letterSpacing = 1.sp),
+                            modifier = Modifier.width(64.dp).padding(start = 8.dp),
+                        )
+                    }
                 }
                 // Full-slab depth fade, dissolving the edge numbers into the panel.
                 Box(
@@ -462,36 +524,59 @@ fun AlarmEditScreen(
     }
 }
 
+/** Convert a 12-hour clock reading (1..12) plus AM/PM into a 24-hour hour (0..23). */
+private fun to24Hour(hour12: Int, isPm: Boolean): Int = when {
+    isPm  -> if (hour12 == 12) 12 else hour12 + 12
+    else  -> if (hour12 == 12) 0 else hour12
+}
+
 @Composable
 private fun WheelPicker(
     count: Int,
     value: Int,
     onValueChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    label: (Int) -> String = { "%02d".format(it) },
+    loop: Boolean = true,
+    textStyle: TextStyle? = null,
     itemHeight: Dp = 56.dp,
     visibleCount: Int = 5,
 ) {
+    val itemStyle = textStyle ?: MaterialTheme.typography.headlineLarge
+    val scope = rememberCoroutineScope()
     val halfVisible = visibleCount / 2
-    // Huge virtual list for infinite wrapping; start in the middle so we can scroll both ways.
-    // With SnapPosition.Center the snapped item is centered, meaning firstVisibleItemIndex
-    // points to the TOP item, so the centered (selected) virtual index = firstVisible + halfVisible.
-    val virtualCount = count * 10_000
-    // Place `value` at the center slot on first composition
-    val initialIndex = (count * 5_000 + value - halfVisible).coerceAtLeast(0)
+    // Looping wheels use a huge virtual list and start in the middle so we can
+    // scroll both ways; non-looping wheels render exactly `count` real items
+    // plus `halfVisible` blank slots on each end so the first and last value can
+    // still reach the centered selection band.
+    // With SnapPosition.Center the snapped item is centered, meaning
+    // firstVisibleItemIndex points to the TOP item, so the centered (selected)
+    // index = firstVisible + halfVisible.
+    val itemCount = if (loop) count * 10_000 else count + halfVisible * 2
+    val initialIndex = if (loop)
+        (count * 5_000 + value - halfVisible).coerceAtLeast(0)
+    else
+        value
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialIndex)
     val flingBehavior = rememberSnapFlingBehavior(lazyListState = listState, snapPosition = SnapPosition.Center)
 
     val currentValue by rememberUpdatedState(value)
     val currentOnValueChange by rememberUpdatedState(onValueChange)
 
+    fun settledValue(): Int =
+        if (loop) (listState.firstVisibleItemIndex + halfVisible) % count
+        else listState.firstVisibleItemIndex.coerceIn(0, count - 1)
+
     // Sync list to value when changed externally (e.g. loading an existing alarm)
     LaunchedEffect(value) {
-        if (!listState.isScrollInProgress) {
-            val centerVirtual = listState.firstVisibleItemIndex + halfVisible
-            val currentValue = centerVirtual % count
-            if (currentValue != value) {
-                val base = centerVirtual - currentValue
+        if (!listState.isScrollInProgress && settledValue() != value) {
+            if (loop) {
+                val centerVirtual = listState.firstVisibleItemIndex + halfVisible
+                val cur = centerVirtual % count
+                val base = centerVirtual - cur
                 listState.scrollToItem((base + value - halfVisible).coerceAtLeast(0))
+            } else {
+                listState.scrollToItem(value)
             }
         }
     }
@@ -502,12 +587,12 @@ private fun WheelPicker(
             .filter { !it }
             .drop(1) // skip the initial false at composition time
             .collect {
-                val settled = (listState.firstVisibleItemIndex + halfVisible) % count
+                val settled = settledValue()
                 if (settled != currentValue) currentOnValueChange(settled)
             }
     }
 
-    // Virtual index of the centered (selected) item
+    // List index of the centered (selected) item
     val centerVirtualIndex by remember { derivedStateOf { listState.firstVisibleItemIndex + halfVisible } }
 
     Box(
@@ -532,9 +617,12 @@ private fun WheelPicker(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxSize(),
         ) {
-            items(virtualCount) { virtualIndex ->
-                val index = virtualIndex % count
-                val distance = abs(virtualIndex - centerVirtualIndex)
+            items(itemCount) { listIndex ->
+                // Looping: every slot maps to a value. Non-looping: the leading
+                // and trailing `halfVisible` slots are blank padding (null).
+                val index: Int? = if (loop) listIndex % count
+                    else (listIndex - halfVisible).takeIf { it in 0 until count }
+                val distance = abs(listIndex - centerVirtualIndex)
                 val alpha = when (distance) {
                     0 -> 1f
                     1 -> 0.50f
@@ -545,21 +633,37 @@ private fun WheelPicker(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(itemHeight),
+                        .height(itemHeight)
+                        // Tap any item to bring it to the centered selection band;
+                        // the settle listener then reports the new value. Blank
+                        // padding slots stay inert.
+                        .then(
+                            if (index != null) Modifier.clickable {
+                                scope.launch {
+                                    listState.animateScrollToItem(
+                                        (listIndex - halfVisible).coerceAtLeast(0)
+                                    )
+                                }
+                            } else Modifier
+                        ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = "%02d".format(index),
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = if (distance == 0)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
-                        modifier = Modifier.graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                        },
-                    )
+                    if (index != null) {
+                        Text(
+                            text = label(index),
+                            style = itemStyle,
+                            maxLines = 1,
+                            softWrap = false,
+                            color = if (distance == 0)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = alpha),
+                            modifier = Modifier.graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                            },
+                        )
+                    }
                 }
             }
         }

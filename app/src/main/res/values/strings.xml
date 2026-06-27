@@ -54,4 +54,6 @@
     <string name="reminder_notification_title">Alarm in 30 minutes</string>
     <string name="reminder_action_skip_today">Skip today</string>
     <string name="reminder_action_turn_off">Turn off</string>
+    <string name="time_format_12h">12-hour</string>
+    <string name="time_format_24h">24-hour</string>
 </resources>

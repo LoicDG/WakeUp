@@ -44,6 +44,7 @@ import com.loic.wakeup.data.NfcTagStore
 import com.loic.wakeup.service.AlarmService
 import com.loic.wakeup.service.RingState
 import androidx.compose.ui.semantics.Role
+import com.loic.wakeup.ui.components.TimeText
 import com.loic.wakeup.ui.theme.Midnight
 import com.loic.wakeup.ui.theme.StarWhite
 import com.loic.wakeup.ui.theme.WakeUpTheme
@@ -282,10 +283,10 @@ private fun RingingScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val state by AlarmService.ringState.collectAsState()
 
-    var currentTime by remember { mutableStateOf(formattedNow()) }
+    var currentTime by remember { mutableStateOf(nowHourMinute()) }
     LaunchedEffect(Unit) {
         while (true) {
-            currentTime = formattedNow()
+            currentTime = nowHourMinute()
             delay(1000)
         }
     }
@@ -383,8 +384,9 @@ private fun RingingScreen(
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 6.sp),
                     color = amber.copy(alpha = 0.75f),
                 )
-                Text(
-                    currentTime,
+                TimeText(
+                    hour = currentTime.first,
+                    minute = currentTime.second,
                     style = MaterialTheme.typography.displayLarge,
                     color = StarWhite,
                 )
@@ -488,10 +490,7 @@ private val RingState.maxSnoozes: Int get() = when (this) {
     is RingState.Snoozed -> maxSnoozes
 }
 
-private fun formattedNow(): String {
+private fun nowHourMinute(): Pair<Int, Int> {
     val cal = java.util.Calendar.getInstance()
-    return "%02d:%02d".format(
-        cal.get(java.util.Calendar.HOUR_OF_DAY),
-        cal.get(java.util.Calendar.MINUTE),
-    )
+    return cal.get(java.util.Calendar.HOUR_OF_DAY) to cal.get(java.util.Calendar.MINUTE)
 }
