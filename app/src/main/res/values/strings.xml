@@ -5,6 +5,7 @@
     <string name="alarm_channel_description">Alarm notifications</string>
     <string name="alarm_notification_title">Alarm!</string>
     <string name="alarm_notification_text">Scan your NFC tag to dismiss</string>
+    <string name="alarm_notification_snoozed_text">Snoozed — scan your NFC tag to dismiss</string>
     <string name="snooze">Snooze</string>
     <string name="dismiss">Dismiss</string>
     <string name="wrong_tag">Wrong tag — scan the registered tag</string>
@@ -30,6 +31,8 @@
     <string name="full_screen_intent_permission">Full-screen intent permission required</string>
     <string name="open_settings">Open settings</string>
     <string name="snoozed">Snoozed (%1$d/%2$d)</string>
+    <string name="snoozed_label">SNOOZED</string>
+    <string name="snoozed_rerings_in">Rings again in %1$s</string>
     <string name="nfc_tag_required">Register an NFC tag in Settings before activating an alarm.</string>
     <string name="max_snoozes_reached">No snoozes left — scan NFC tag to dismiss</string>
     <string name="nfc_section_title">NFC TAG</string>
