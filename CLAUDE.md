@@ -55,7 +55,9 @@ Single-module Android app (`app/`) using MVVM + Repository pattern with Jetpack 
 
 ## Permissions (AndroidManifest)
 
-NFC (required hardware), `SCHEDULE_EXACT_ALARM`, `USE_EXACT_ALARM`, `POST_NOTIFICATIONS`, `USE_FULL_SCREEN_INTENT`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE`, `VIBRATE`.
+NFC (required hardware), `SCHEDULE_EXACT_ALARM`, `USE_EXACT_ALARM`, `POST_NOTIFICATIONS`, `USE_FULL_SCREEN_INTENT`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE`, `VIBRATE`, `QUERY_ALL_PACKAGES` (to list installed apps for the app-blocking allow-list — fine for a sideloaded app, but would need a Play Store declaration if ever published).
+
+The app-blocking feature also declares an `AccessibilityService` (`AppBlockAccessibilityService`) bound with `BIND_ACCESSIBILITY_SERVICE`; the OS only activates it after the user turns it on in **Settings → Accessibility**. It cannot be granted from code.
 
 The `AlarmService` foreground service type is `specialUse` (subtype: `alarm`).
 
@@ -83,6 +85,14 @@ The `AlarmService` foreground service type is `specialUse` (subtype: `alarm`).
 - `AlarmService.isRunning` / `runningAlarmId` are `@Volatile` companion-object flags the ringing UI reads to detect if the service is still alive.
 - `AlarmService.ringState` is a `StateFlow<RingState>` (companion object); `AlarmRingingActivity` collects it directly without a ViewModel.
 
+## App blocking (during alarms)
+
+- Goal: while an alarm is ringing, block every app except an allow-list, forcing the user to scan the tag (which dismisses the alarm) to regain their phone. Scoped **only to an active alarm** — blocking is coextensive with a running `AlarmService`.
+- **Mechanism:** `AppBlockAccessibilityService` receives `TYPE_WINDOW_STATE_CHANGED` on every foreground-app change and consults the pure `AppBlockPolicy.shouldBlock(...)`. When it returns true it relaunches `AlarmRingingActivity` (`FLAG_ACTIVITY_REORDER_TO_FRONT or NEW_TASK`, with `runningAlarmId`), pulling the lock screen back over the blocked app. This also *hardens the anti-escape behaviour* — HOME/recents/other-app all bounce back to the ringing screen, far more robustly than the activity's own `onStop()` 800 ms relaunch (which stays as a fallback for when the service isn't enabled).
+- **Gating:** `shouldBlock` requires `featureEnabled` (`AppBlockStore.enabled`) **and** `alarmActive` (`AlarmService.isRunning`). Never blocks WakeUp itself, `android`/`com.android.systemui`, or allow-listed packages. The home launcher is intentionally *not* auto-allowed, so pressing HOME during an alarm returns to the scan screen.
+- **State:** `AppBlockStore` (plain `SharedPreferences`, `StateFlow`s) holds the master enable flag + the allow-listed package names, seeded once with the default dialer/SMS/Settings packages via `seedDefaultsIfNeeded`. Read directly by the accessibility service (same process).
+- The service does nothing until the user enables it in Accessibility settings; `AppBlockSettingsScreen` shows live on/off status (re-checked on `ON_RESUME` via `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES`) and deep-links there.
+
 ## Theme
 
 Dark-only (`WakeUpTheme` always uses `darkColorScheme`; `dynamicColor = false`). Named colors: `Amber` (primary/accent), `Midnight` (background), `DeepNavy` (surface), `StarWhite` (on-surface), `SlateBlue` (variant), `MorningBlue` (secondary), `NavyVariant`, `NavyOutline`. Display clock uses `FontFamily.Serif` at 80 sp.
@@ -91,7 +101,8 @@ Dark-only (`WakeUpTheme` always uses `darkColorScheme`; `dynamicColor = false`).
 
 - `alarm_list` — `AlarmListScreen`
 - `alarm_edit/{alarmId}` — `AlarmEditScreen`; `alarmId = -1` means new alarm
-- `nfc_settings` — `NfcSettingsScreen`
+- `nfc_settings` — `NfcSettingsScreen` (the app's settings page; has a button into `app_block_settings`)
+- `app_block_settings` — `AppBlockSettingsScreen`
 
 `AlarmRingingActivity` is a separate `Activity` (not part of the Compose nav graph); launched directly from `AlarmReceiver` and via full-screen `PendingIntent` in the notification.
 
