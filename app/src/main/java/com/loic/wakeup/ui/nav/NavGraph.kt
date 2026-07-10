@@ -8,6 +8,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.loic.wakeup.ui.screens.AlarmEditScreen
 import com.loic.wakeup.ui.screens.AlarmListScreen
+import com.loic.wakeup.ui.screens.AppBlockSettingsScreen
 import com.loic.wakeup.ui.screens.NfcSettingsScreen
 
 sealed class Screen(val route: String) {
@@ -16,6 +17,7 @@ sealed class Screen(val route: String) {
         fun createRoute(alarmId: Int = -1) = "alarm_edit/$alarmId"
     }
     object NfcSettings : Screen("nfc_settings")
+    object AppBlock    : Screen("app_block_settings")
 }
 
 @Composable
@@ -39,7 +41,13 @@ fun NavGraph(navController: NavHostController) {
             )
         }
         composable(Screen.NfcSettings.route) {
-            NfcSettingsScreen(onBack = { navController.popBackStack() })
+            NfcSettingsScreen(
+                onBack = { navController.popBackStack() },
+                onAppBlocking = { navController.navigate(Screen.AppBlock.route) },
+            )
+        }
+        composable(Screen.AppBlock.route) {
+            AppBlockSettingsScreen(onBack = { navController.popBackStack() })
         }
     }
 }

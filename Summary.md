@@ -54,6 +54,8 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
   - Thin repository wrapper around `AlarmDao` used by ViewModels and services.
 - `NfcTagStore.kt`
   - Securely stores and retrieves the registered NFC tag UID using `EncryptedSharedPreferences`.
+- `AppBlockStore.kt`
+  - Plain-`SharedPreferences` store for the app-blocking feature, exposed as `StateFlow`s: master `enabled` flag plus the `allowedPackages` set. Seeds defaults (dialer/SMS/Settings) once via `seedDefaultsIfNeeded`. Read by both the settings UI and `AppBlockAccessibilityService`. Init in `WakeUpApp.onCreate`.
 
 ---
 
@@ -63,6 +65,8 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
   - Wraps `AlarmManager` and schedules exact alarm triggers and snooze behavior.
 - `NextTriggerCalculator.kt`
   - Computes the next alarm trigger time based on the alarm's time and repeating days mask.
+- `AppBlockPolicy.kt`
+  - Pure decision for the app-blocking feature: `shouldBlock(foregroundPackage, selfPackage, allowedPackages, alarmActive, featureEnabled)`. Never blocks WakeUp itself, core system packages (`android`, `com.android.systemui`), or allow-listed apps; the home launcher stays blockable so HOME bounces back to the alarm. Unit-tested in `AppBlockPolicyTest`.
 
 ---
 
@@ -79,6 +83,8 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 
 - `AlarmService.kt`
   - Foreground service that plays the alarm ringtone, vibrates, posts a high-priority notification with full-screen intent, handles snooze, and exposes `RingState` for the UI.
+- `AppBlockAccessibilityService.kt`
+  - Accessibility service backing the app-blocking feature. On every foreground-app change it consults `AppBlockPolicy`; when an app should be blocked (feature on + alarm ringing + not allow-listed) it relaunches `AlarmRingingActivity`, so no app — nor HOME/recents — can escape the alarm. Inert until the user enables it in Android's accessibility settings.
 
 ---
 
@@ -98,7 +104,9 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 - `AlarmRingingActivity.kt`
   - Full-screen ringing activity that shows alarm state, prevents back/volume escape, enables NFC reader mode on resume, and dismisses alarms when the registered NFC tag is scanned.
 - `NfcSettingsScreen.kt`
-  - Settings screen to register, replace, or remove the NFC tag using NFC reader mode, plus buttons for permissions and exact alarm settings.
+  - Settings screen to register, replace, or remove the NFC tag using NFC reader mode, plus buttons for permissions, exact alarm settings, and a button into the app-blocking screen.
+- `AppBlockSettingsScreen.kt`
+  - Settings screen for the app-blocking feature: master on/off switch, live accessibility-service status with a button into Android's accessibility settings, and a scrollable list of installed apps with checkboxes to build the allow-list.
 
 ---
 

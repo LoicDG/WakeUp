@@ -34,6 +34,7 @@ import dev.chrisbanes.haze.hazeSource
 @Composable
 fun NfcSettingsScreen(
     onBack: () -> Unit,
+    onAppBlocking: () -> Unit = {},
     vm: NfcSettingsViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -211,6 +212,38 @@ fun NfcSettingsScreen(
                             colors = segmentColors,
                         ) { Text(stringResource(R.string.time_format_24h)) }
                     }
+                }
+            }
+
+            // App blocking section
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .frostedPanel(RoundedCornerShape(24.dp)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.app_blocking_title),
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        stringResource(R.string.app_blocking_summary),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Button(
+                        onClick = onAppBlocking,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    ) { Text(stringResource(R.string.app_blocking)) }
                 }
             }
 

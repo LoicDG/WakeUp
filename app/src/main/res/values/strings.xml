@@ -30,6 +30,19 @@
     <string name="exact_alarm_permission">Exact alarm permission required</string>
     <string name="full_screen_intent_permission">Full-screen intent permission required</string>
     <string name="open_settings">Open settings</string>
+    <!-- App blocking -->
+    <string name="accessibility_service_label">WakeUp app blocking</string>
+    <string name="accessibility_service_description">Lets WakeUp block other apps while an alarm is ringing, so you have to scan your tag to get out of bed. WakeUp only checks which app is in the foreground; it never reads screen content.</string>
+    <string name="app_blocking">App blocking</string>
+    <string name="app_blocking_title">APP BLOCKING</string>
+    <string name="app_blocking_summary">While an alarm is ringing, block every app except the ones you allow below. Scan your tag to unlock.</string>
+    <string name="app_blocking_enable">Block apps during alarms</string>
+    <string name="app_blocking_service_needed">Blocking needs the WakeUp accessibility service. Turn it on in Android settings.</string>
+    <string name="app_blocking_service_on">Accessibility service is on.</string>
+    <string name="app_blocking_open_accessibility">Open accessibility settings</string>
+    <string name="app_blocking_allowed_apps">ALWAYS ALLOWED APPS</string>
+    <string name="app_blocking_allowed_hint">These stay usable while an alarm rings. WakeUp itself is always allowed.</string>
+    <string name="app_blocking_loading_apps">Loading apps…</string>
     <string name="snoozed">Snoozed (%1$d/%2$d)</string>
     <string name="snoozed_label">SNOOZED</string>
     <string name="snoozed_rerings_in">Rings again in %1$s</string>

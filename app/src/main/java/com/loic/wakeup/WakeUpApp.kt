@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.loic.wakeup.R
+import com.loic.wakeup.data.AppBlockStore
 import com.loic.wakeup.data.SettingsStore
 
 class WakeUpApp : Application() {
@@ -16,6 +17,7 @@ class WakeUpApp : Application() {
     override fun onCreate() {
         super.onCreate()
         SettingsStore.init(this)
+        AppBlockStore.init(this)
         createNotificationChannel()
     }
 
