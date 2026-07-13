@@ -61,6 +61,24 @@
             </intent-filter>
         </receiver>
 
+        <!--
+            Device-admin receiver for the optional kiosk (lock-task) layer. Provisioned as
+            device owner over ADB (see README); inert on any un-provisioned install.
+              adb shell dpm set-device-owner com.loic.wakeup/.receiver.WakeUpDeviceAdminReceiver
+        -->
+        <receiver
+            android:name=".receiver.WakeUpDeviceAdminReceiver"
+            android:description="@string/device_admin_description"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".service.AlarmService"
             android:exported="false"
