@@ -75,6 +75,42 @@ Architecture: **MVVM + Repository** with Jetpack Compose UI and Room for persist
 | `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_SPECIAL_USE` | Run alarm service in foreground |
 | `VIBRATE` | Vibrate on alarm |
 
+## Kiosk Lockdown (optional, device owner)
+
+An **optional** layer that suppresses the power menu while an alarm is ringing, so it can't be
+tapped away with "Power off" / "Restart". It uses Android lock task (screen pinning) with the
+`GLOBAL_ACTIONS` feature deliberately turned off, and is only active when WakeUp is provisioned as
+**device owner** over ADB. This is entirely feature-detected and reversible:
+
+- If WakeUp is **not** device owner (the default on any normal install), every device-owner call is
+  a logged no-op and the alarm runs as an ordinary full-screen alarm — it can never lock you out or
+  crash.
+- Only lock task + power-menu suppression are used. No `DISALLOW_*` restrictions and no
+  boot/shutdown re-arm — a **hardware power-off stays a clean exit** by design.
+- The only in-app exit from the kiosk is a successful NFC dismiss, which leaves lock task and
+  restores the power menu.
+
+### Provisioning (once, over ADB — requires no root)
+
+The device must have no other accounts on the primary user (a fresh device or one with accounts
+removed), which is Android's requirement for `set-device-owner`:
+
+```bash
+adb shell dpm set-device-owner com.loic.wakeup/.receiver.WakeUpDeviceAdminReceiver
+```
+
+### Removal
+
+```bash
+adb shell dpm remove-active-admin com.loic.wakeup/.receiver.WakeUpDeviceAdminReceiver
+```
+
+### Escape hatch (no ADB needed)
+
+If you ever need to relinquish device-owner status from the phone itself, open **Settings →
+App blocking** and **long-press the "KIOSK LOCKDOWN" card**. That calls `clearDeviceOwnerApp(...)`
+and drops any active lock task, returning the phone to a normal, unmanaged state.
+
 ## NFC Tag Details
 
 - Any single NFC tag can be registered; the UID is stored in `EncryptedSharedPreferences` (AES256-GCM).

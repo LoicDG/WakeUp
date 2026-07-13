@@ -67,6 +67,8 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
   - Computes the next alarm trigger time based on the alarm's time and repeating days mask.
 - `AppBlockPolicy.kt`
   - Pure decision for the app-blocking feature: `shouldBlock(foregroundPackage, selfPackage, allowedPackages, alarmActive, featureEnabled)`. Never blocks WakeUp itself, core system packages (`android`, `com.android.systemui`), or allow-listed apps; the home launcher stays blockable so HOME bounces back to the alarm. Unit-tested in `AppBlockPolicyTest`.
+- `DeviceOwnerPolicy.kt`
+  - Defensively-guarded wrapper around `DevicePolicyManager` for the optional kiosk (lock-task) layer that suppresses the power menu while an alarm rings. `isDeviceOwner()`, `enableAlarmLockdown()` (whitelists our package via `setLockTaskPackages` + `setLockTaskFeatures` with `LOCK_TASK_FEATURE_GLOBAL_ACTIONS` **omitted** so the power menu is hidden), `disableAlarmLockdown()` (restores platform defaults), and `relinquishDeviceOwner()` (escape hatch → `clearDeviceOwnerApp`). Only active when provisioned as device owner via ADB; every call is a logged no-op otherwise, so the app degrades to a normal alarm. Feature-detects API 28 for the lock-task feature flags.
 
 ---
 
@@ -76,6 +78,8 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
   - Receives alarms from `AlarmManager`, launches the ringing UI and foreground service, resets snooze count, reschedules repeating alarms, and disables one-shot alarms.
 - `BootReceiver.kt`
   - Reschedules all enabled alarms after device reboot.
+- `WakeUpDeviceAdminReceiver.kt`
+  - Empty `DeviceAdminReceiver` subclass required so WakeUp can be provisioned as *device owner* over ADB (`dpm set-device-owner com.loic.wakeup/.receiver.WakeUpDeviceAdminReceiver`). Device-owner status unlocks the kiosk lock-task layer (see `DeviceOwnerPolicy`). Inert on any un-provisioned install. Declared in the manifest with `BIND_DEVICE_ADMIN` + a `DEVICE_ADMIN_ENABLED` filter and `@xml/device_admin` metadata.
 
 ---
 
@@ -102,7 +106,7 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 - `AlarmEditScreen.kt`
   - Screen for creating or editing an alarm, including time, repeat days, label, ringtone, and snooze settings.
 - `AlarmRingingActivity.kt`
-  - Full-screen ringing activity that shows alarm state, prevents back/volume escape, enables NFC reader mode on resume, and dismisses alarms when the registered NFC tag is scanned.
+  - Full-screen ringing activity that shows alarm state, prevents back/volume escape, enables NFC reader mode on resume, and dismisses alarms when the registered NFC tag is scanned. When WakeUp is device owner it also enters a kiosk lock task on ring (`enterKioskIfOwner`, idempotent across recreation via `ActivityManager.lockTaskModeState`) to suppress the power menu; a successful dismiss leaves lock task and restores defaults (`exitKioskIfActive`), with an `onDestroy`/`isFinishing` backstop. No-op when not device owner.
 - `NfcSettingsScreen.kt`
   - Settings screen to register, replace, or remove the NFC tag using NFC reader mode, plus buttons for permissions, exact alarm settings, and a button into the app-blocking screen.
 - `AppBlockSettingsScreen.kt`
@@ -142,6 +146,8 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
   - Localized UI text, NFC prompts, alarm labels, and notification strings.
 - `app/src/main/res/values/themes.xml`
   - Theme configuration and style definitions.
+- `app/src/main/res/xml/device_admin.xml`
+  - Device-admin policy metadata for the kiosk layer (`android:visible="false"`, empty policy set — lock task needs only device-owner status). Referenced by `WakeUpDeviceAdminReceiver` in the manifest.
 - `app/src/main/res/xml/data_extraction_rules.xml`
   - Backup and data extraction rules for Android.
 - `app/src/main/res/xml/backup_rules.xml`

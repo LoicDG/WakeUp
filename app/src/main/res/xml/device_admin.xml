@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Device-admin policy metadata for WakeUp's optional kiosk (lock-task) layer.
+
+    The lock-task APIs we use (setLockTaskPackages / setLockTaskFeatures / startLockTask)
+    are gated on the app being *device owner*, which can only happen via ADB provisioning
+    (see README). Device-owner status does not require any of the classic device-admin
+    policies below, so the policy set is intentionally empty — we never force-lock the
+    screen, wipe data, or impose password rules.
+
+    android:visible="false" keeps this off the normal "Device admin apps" list; it is
+    provisioned as device owner over ADB, not activated by the user.
+-->
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android"
+    android:visible="false">
+    <uses-policies>
+    </uses-policies>
+</device-admin>
