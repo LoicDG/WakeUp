@@ -77,4 +77,8 @@
     <string name="kiosk_status_normal">Inactive — not device owner. Provision via ADB to enable (see README).</string>
     <string name="kiosk_owner_cleared">Device owner cleared — kiosk lockdown disabled.</string>
     <string name="kiosk_owner_absent">Not a device owner — nothing to clear.</string>
+    <string name="kiosk_clear_owner">Clear device owner</string>
+    <string name="kiosk_clear_confirm_title">Clear device owner?</string>
+    <string name="kiosk_clear_confirm_body">This turns off kiosk lockdown and returns the phone to a normal, unmanaged state. Re-enabling it requires provisioning again over ADB.</string>
+    <string name="kiosk_clear_confirm_ok">Clear</string>
 </resources>

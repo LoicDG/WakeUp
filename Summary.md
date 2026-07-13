@@ -110,7 +110,7 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 - `NfcSettingsScreen.kt`
   - Settings screen to register, replace, or remove the NFC tag using NFC reader mode, plus buttons for permissions, exact alarm settings, and a button into the app-blocking screen.
 - `AppBlockSettingsScreen.kt`
-  - Settings screen for the app-blocking feature: master on/off switch, live accessibility-service status with a button into Android's accessibility settings, and a scrollable list of installed apps with checkboxes to build the allow-list.
+  - Settings screen for the app-blocking feature: master on/off switch, live accessibility-service status with a button into Android's accessibility settings, and a scrollable list of installed apps with checkboxes to build the allow-list. Also hosts the "KIOSK LOCKDOWN" panel showing device-owner status; when WakeUp is device owner it shows a "Clear device owner" button (confirm dialog) that calls `DeviceOwnerPolicy.relinquishDeviceOwner()` to undo the kiosk layer without ADB.
 
 ---
 

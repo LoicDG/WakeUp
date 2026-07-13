@@ -4,11 +4,9 @@ import android.content.ComponentName
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -170,37 +168,49 @@ fun AppBlockSettingsScreen(
 
 /**
  * Status card for the optional device-owner kiosk layer. Shows whether WakeUp is currently the
- * device owner (which is what suppresses the power menu during alarms). The hidden debug escape
- * hatch lives here: a LONG-PRESS on the card relinquishes device-owner status, undoing the
- * lockdown without needing ADB. Documented in the README, not on-screen, so it stays out of the
- * way during normal use.
+ * device owner (which is what suppresses the power menu during alarms), and — when it is —
+ * offers an explicit "Clear device owner" button (behind a confirm dialog) that relinquishes
+ * device-owner status and undoes the lockdown without needing ADB.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun KioskLockdownPanel() {
     val context = LocalContext.current
     var isOwner by remember { mutableStateOf(DeviceOwnerPolicy.isDeviceOwner(context)) }
+    var showConfirm by remember { mutableStateOf(false) }
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .frostedPanel(RoundedCornerShape(24.dp))
-            .combinedClickable(
-                onClick = { /* no-op: status card */ },
-                onLongClick = {
+    if (showConfirm) {
+        AlertDialog(
+            onDismissRequest = { showConfirm = false },
+            title = { Text(stringResource(R.string.kiosk_clear_confirm_title)) },
+            text = { Text(stringResource(R.string.kiosk_clear_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = {
                     val cleared = DeviceOwnerPolicy.relinquishDeviceOwner(context)
                     isOwner = DeviceOwnerPolicy.isDeviceOwner(context)
+                    showConfirm = false
                     Toast.makeText(
                         context,
                         if (cleared) R.string.kiosk_owner_cleared else R.string.kiosk_owner_absent,
                         Toast.LENGTH_LONG,
                     ).show()
-                },
-            ),
+                }) { Text(stringResource(R.string.kiosk_clear_confirm_ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirm = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .frostedPanel(RoundedCornerShape(24.dp)),
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
                 stringResource(R.string.kiosk_title),
@@ -218,6 +228,16 @@ private fun KioskLockdownPanel() {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (isOwner) {
+                OutlinedButton(
+                    onClick = { showConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) { Text(stringResource(R.string.kiosk_clear_owner)) }
+            }
         }
     }
 }

@@ -108,8 +108,9 @@ adb shell dpm remove-active-admin com.loic.wakeup/.receiver.WakeUpDeviceAdminRec
 ### Escape hatch (no ADB needed)
 
 If you ever need to relinquish device-owner status from the phone itself, open **Settings →
-App blocking** and **long-press the "KIOSK LOCKDOWN" card**. That calls `clearDeviceOwnerApp(...)`
-and drops any active lock task, returning the phone to a normal, unmanaged state.
+App blocking** and tap **"Clear device owner"** on the KIOSK LOCKDOWN card (shown only while
+WakeUp is the device owner, behind a confirm dialog). That calls `clearDeviceOwnerApp(...)` and
+drops any active lock task, returning the phone to a normal, unmanaged state.
 
 ## NFC Tag Details
 
