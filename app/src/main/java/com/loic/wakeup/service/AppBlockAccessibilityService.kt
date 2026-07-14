@@ -2,6 +2,8 @@ package com.loic.wakeup.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import com.loic.wakeup.data.AppBlockStore
 import com.loic.wakeup.domain.AppBlockPolicy
@@ -23,6 +25,8 @@ import com.loic.wakeup.ui.screens.AlarmRingingActivity
  */
 class AppBlockAccessibilityService : AccessibilityService() {
 
+    private val handler = Handler(Looper.getMainLooper())
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
@@ -38,8 +42,7 @@ class AppBlockAccessibilityService : AccessibilityService() {
                 guardEnabled = AppBlockStore.powerMenuGuardEnabled.value,
             )
         ) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            bringBackLockScreen()
+            dismissPowerMenu()
             return
         }
 
@@ -55,11 +58,34 @@ class AppBlockAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() { /* no-op */ }
 
+    /**
+     * Close the power menu, then pull the ringing screen back over it.
+     *
+     * The BACK **must be delayed**: the window-state event arrives while the global-actions dialog
+     * is still animating in and has not taken input focus yet, so a BACK sent right away is
+     * delivered to the still-focused [AlarmRingingActivity] — which swallows BACK by design — and
+     * the menu stays open. (`performGlobalAction` still returns true, so the failure is silent.)
+     * Once the dialog holds focus, BACK closes it. The second attempt covers a slower animation
+     * (e.g. a raised animator duration scale); a redundant BACK is harmless, since the ringing
+     * activity ignores it.
+     */
+    private fun dismissPowerMenu() {
+        handler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, POWER_MENU_BACK_DELAY_MS)
+        handler.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, POWER_MENU_BACK_RETRY_MS)
+        handler.postDelayed({ bringBackLockScreen() }, POWER_MENU_BACK_RETRY_MS + 200L)
+    }
+
     private fun bringBackLockScreen() {
         val intent = Intent(this, AlarmRingingActivity::class.java).apply {
             putExtra(AlarmService.EXTRA_ALARM_ID, AlarmService.runningAlarmId)
             addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         startActivity(intent)
+    }
+
+    private companion object {
+        /** Long enough for the global-actions dialog to take input focus; measured on One UI. */
+        const val POWER_MENU_BACK_DELAY_MS = 150L
+        const val POWER_MENU_BACK_RETRY_MS = 500L
     }
 }

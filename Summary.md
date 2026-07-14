@@ -55,7 +55,7 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 - `NfcTagStore.kt`
   - Securely stores and retrieves the registered NFC tag UID using `EncryptedSharedPreferences`.
 - `AppBlockStore.kt`
-  - Plain-`SharedPreferences` store for the app-blocking feature, exposed as `StateFlow`s: master `enabled` flag, the `allowedPackages` set, plus `powerMenuGuardEnabled` (the best-effort power-menu guard toggle, independent of app blocking but served by the same accessibility service). Seeds defaults (dialer/SMS/Settings) once via `seedDefaultsIfNeeded`. Read by both the settings UI and `AppBlockAccessibilityService`. Init in `WakeUpApp.onCreate`.
+  - Plain-`SharedPreferences` store for the app-blocking feature, exposed as `StateFlow`s: master `enabled` flag, the `allowedPackages` set, plus `powerMenuGuardEnabled` (the best-effort power-menu guard toggle — **on by default**, independent of app blocking but served by the same accessibility service). Seeds defaults (dialer/SMS/Settings) once via `seedDefaultsIfNeeded`. Read by both the settings UI and `AppBlockAccessibilityService`. Init in `WakeUpApp.onCreate`.
 
 ---
 
@@ -69,8 +69,6 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
   - Pure decision for the app-blocking feature: `shouldBlock(foregroundPackage, selfPackage, allowedPackages, alarmActive, featureEnabled)`. Never blocks WakeUp itself, core system packages (`android`, `com.android.systemui`), or allow-listed apps; the home launcher stays blockable so HOME bounces back to the alarm. Unit-tested in `AppBlockPolicyTest`.
 - `PowerMenuPolicy.kt`
   - Pure decision for the best-effort power-menu guard: `isPowerMenu(packageName, className)` heuristically matches the System UI global-actions/power-menu window (markers like `globalaction`/`powermenu`/`shutdown`), and `shouldDismiss(packageName, className, alarmActive, guardEnabled)` gates that on an active alarm + the guard being on. Backs `AppBlockAccessibilityService`'s power-menu dismissal. Unit-tested in `PowerMenuPolicyTest`.
-- `DeviceOwnerPolicy.kt`
-  - Defensively-guarded wrapper around `DevicePolicyManager` for the optional kiosk (lock-task) layer that suppresses the power menu while an alarm rings. `isDeviceOwner()`, `enableAlarmLockdown()` (whitelists our package via `setLockTaskPackages` + `setLockTaskFeatures` with `LOCK_TASK_FEATURE_GLOBAL_ACTIONS` **omitted** so the power menu is hidden), `disableAlarmLockdown()` (restores platform defaults), and `relinquishDeviceOwner()` (escape hatch → `clearDeviceOwnerApp`). Only active when provisioned as device owner via ADB; every call is a logged no-op otherwise, so the app degrades to a normal alarm. Feature-detects API 28 for the lock-task feature flags.
 
 ---
 
@@ -80,17 +78,10 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
   - Receives alarms from `AlarmManager`, launches the ringing UI and foreground service, resets snooze count, reschedules repeating alarms, and disables one-shot alarms.
 - `BootReceiver.kt`
   - Reschedules all enabled alarms after device reboot.
-- `WakeUpDeviceAdminReceiver.kt`
-  - Empty `DeviceAdminReceiver` subclass required so WakeUp can be provisioned as *device owner* over ADB (`dpm set-device-owner com.loic.wakeup/.receiver.WakeUpDeviceAdminReceiver`). Device-owner status unlocks the kiosk lock-task layer (see `DeviceOwnerPolicy`). Inert on any un-provisioned install. Declared in the manifest with `BIND_DEVICE_ADMIN` + a `DEVICE_ADMIN_ENABLED` filter and `@xml/device_admin` metadata.
-
----
-
-## Alarm service (`service` package)
-
 - `AlarmService.kt`
   - Foreground service that plays the alarm ringtone, vibrates, posts a high-priority notification with full-screen intent, handles snooze, and exposes `RingState` for the UI.
 - `AppBlockAccessibilityService.kt`
-  - Accessibility service backing the app-blocking feature. On every foreground-app change it consults `AppBlockPolicy`; when an app should be blocked (feature on + alarm ringing + not allow-listed) it relaunches `AlarmRingingActivity`, so no app — nor HOME/recents — can escape the alarm. It also runs the best-effort power-menu guard: when `PowerMenuPolicy.shouldDismiss(...)` matches the System UI power menu during an alarm, it fires `GLOBAL_ACTION_BACK` to close it and pulls the ringing screen back. Inert until the user enables it in Android's accessibility settings.
+  - Accessibility service backing the app-blocking feature. On every foreground-app change it consults `AppBlockPolicy`; when an app should be blocked (feature on + alarm ringing + not allow-listed) it relaunches `AlarmRingingActivity`, so no app — nor HOME/recents — can escape the alarm. It also runs the best-effort power-menu guard: when `PowerMenuPolicy.shouldDismiss(...)` matches the System UI power menu during an alarm, it fires `GLOBAL_ACTION_BACK` (after a ~150 ms delay — the dialog must take input focus first, or the key is swallowed by the ringing activity) to close it and pulls the ringing screen back. Inert until the user enables it in Android's accessibility settings.
 
 ---
 
@@ -108,11 +99,11 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 - `AlarmEditScreen.kt`
   - Screen for creating or editing an alarm, including time, repeat days, label, ringtone, and snooze settings.
 - `AlarmRingingActivity.kt`
-  - Full-screen ringing activity that shows alarm state, prevents back/volume escape, enables NFC reader mode on resume, and dismisses alarms when the registered NFC tag is scanned. When WakeUp is device owner it also enters a kiosk lock task on ring (`enterKioskIfOwner`, idempotent across recreation via `ActivityManager.lockTaskModeState`) to suppress the power menu; a successful dismiss leaves lock task and restores defaults (`exitKioskIfActive`), with an `onDestroy`/`isFinishing` backstop. No-op when not device owner.
+  - Full-screen ringing activity that shows alarm state, prevents back/volume escape, enables NFC reader mode on resume, and dismisses alarms when the registered NFC tag is scanned.
 - `NfcSettingsScreen.kt`
   - Settings screen to register, replace, or remove the NFC tag using NFC reader mode, plus buttons for permissions, exact alarm settings, and a button into the app-blocking screen.
 - `AppBlockSettingsScreen.kt`
-  - Settings screen for the app-blocking feature: master on/off switch, live accessibility-service status with a button into Android's accessibility settings, and a scrollable list of installed apps with checkboxes to build the allow-list. Also hosts a "POWER MENU" panel (switch for the best-effort power-menu guard) and the "KIOSK LOCKDOWN" panel showing device-owner status; when WakeUp is device owner the latter shows a "Clear device owner" button (confirm dialog) that calls `DeviceOwnerPolicy.relinquishDeviceOwner()` to undo the kiosk layer without ADB.
+  - Settings screen for the app-blocking feature: master on/off switch, live accessibility-service status with a button into Android's accessibility settings, and a scrollable list of installed apps with checkboxes to build the allow-list. Also hosts a "POWER MENU" panel (switch for the best-effort power-menu guard).
 
 ---
 
@@ -148,8 +139,6 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
   - Localized UI text, NFC prompts, alarm labels, and notification strings.
 - `app/src/main/res/values/themes.xml`
   - Theme configuration and style definitions.
-- `app/src/main/res/xml/device_admin.xml`
-  - Device-admin policy metadata for the kiosk layer (`android:visible="false"`, empty policy set — lock task needs only device-owner status). Referenced by `WakeUpDeviceAdminReceiver` in the manifest.
 - `app/src/main/res/xml/data_extraction_rules.xml`
   - Backup and data extraction rules for Android.
 - `app/src/main/res/xml/backup_rules.xml`

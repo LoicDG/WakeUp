@@ -30,6 +30,18 @@ class PowerMenuPolicyTest {
         assertTrue(PowerMenuPolicy.isPowerMenu(systemUi, "some.ShutdownDialog"))
     }
 
+    /** The exact class One UI reports on the test device (Galaxy S24, Android 16). */
+    @Test
+    fun detectsOneUiGlobalActionsDialog() {
+        assertTrue(
+            PowerMenuPolicy.isPowerMenu(
+                systemUi,
+                "com.samsung.android.globalactions.presentation.view." +
+                    "SamsungGlobalActionsDialogBase\$ActionsDialog",
+            )
+        )
+    }
+
     @Test
     fun ignoresOtherSystemUiWindows() {
         // Keyguard, status bar, volume, notification shade must not be treated as the power menu.

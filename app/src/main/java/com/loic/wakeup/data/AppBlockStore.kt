@@ -32,14 +32,15 @@ object AppBlockStore {
     val allowedPackages: StateFlow<Set<String>> = _allowedPackages.asStateFlow()
 
     // Best-effort power-menu guard — independent of app blocking, but served by the same
-    // accessibility service. Off by default (opt-in).
-    private val _powerMenuGuardEnabled = MutableStateFlow(false)
+    // accessibility service. On by default: it only ever acts while an alarm is ringing, and
+    // suppressing the power menu then is the point of enabling the service at all.
+    private val _powerMenuGuardEnabled = MutableStateFlow(true)
     val powerMenuGuardEnabled: StateFlow<Boolean> = _powerMenuGuardEnabled.asStateFlow()
 
     fun init(context: Context) {
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         _enabled.value = prefs.getBoolean(KEY_ENABLED, false)
-        _powerMenuGuardEnabled.value = prefs.getBoolean(KEY_POWER_MENU_GUARD, false)
+        _powerMenuGuardEnabled.value = prefs.getBoolean(KEY_POWER_MENU_GUARD, true)
         // getStringSet may hand back the very instance it stores, so copy defensively.
         _allowedPackages.value = prefs.getStringSet(KEY_ALLOWED, emptySet())!!.toSet()
     }

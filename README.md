@@ -75,61 +75,27 @@ Architecture: **MVVM + Repository** with Jetpack Compose UI and Room for persist
 | `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_SPECIAL_USE` | Run alarm service in foreground |
 | `VIBRATE` | Vibrate on alarm |
 
-## Power-menu guard (optional, no device owner needed)
+## Power-menu guard (no device owner needed)
 
 A **best-effort** layer that stops the system power menu from being tapped to power off / restart
 away from a ringing alarm — **without** needing device owner. It reuses the same accessibility
 service as app blocking: while an alarm is ringing, if the power menu (global-actions dialog)
-appears, the service immediately closes it (`GLOBAL_ACTION_BACK`) and pulls the ringing screen
-back.
+appears, the service closes it (`GLOBAL_ACTION_BACK`) and pulls the ringing screen back.
 
-Enable it under **Settings → App blocking → POWER MENU** (needs the WakeUp accessibility service
-turned on). Honest limitations:
+It is **on by default** and only ever acts while an alarm is ringing; the switch lives under
+**Settings → App blocking → POWER MENU** (needs the WakeUp accessibility service turned on).
+Honest limitations:
 
 - It **dismisses** the menu rather than hiding it — apps can't hide it without device owner — so
   there's a brief flash, and a fast, deliberate tap on "Power off" could still land first.
+- The BACK is sent after a short delay (~150 ms), because the dialog has to take input focus
+  first — see `AppBlockAccessibilityService.dismissPowerMenu`. Sending it immediately does
+  nothing (the key goes to the ringing activity, which swallows BACK).
 - Detection of the power-menu window is heuristic and can vary by Android version / OEM skin.
+  Verified against One UI's `SamsungGlobalActionsDialogBase$ActionsDialog` on a Galaxy S24.
 - A real hardware power-off (holding the button) still works, by design.
 
-For most people this covers the actual goal — a groggy tap can't quietly kill the alarm — without
-any of the device-owner trade-offs below.
-
-## Kiosk Lockdown (optional, device owner)
-
-An **optional** layer that suppresses the power menu while an alarm is ringing, so it can't be
-tapped away with "Power off" / "Restart". It uses Android lock task (screen pinning) with the
-`GLOBAL_ACTIONS` feature deliberately turned off, and is only active when WakeUp is provisioned as
-**device owner** over ADB. This is entirely feature-detected and reversible:
-
-- If WakeUp is **not** device owner (the default on any normal install), every device-owner call is
-  a logged no-op and the alarm runs as an ordinary full-screen alarm — it can never lock you out or
-  crash.
-- Only lock task + power-menu suppression are used. No `DISALLOW_*` restrictions and no
-  boot/shutdown re-arm — a **hardware power-off stays a clean exit** by design.
-- The only in-app exit from the kiosk is a successful NFC dismiss, which leaves lock task and
-  restores the power menu.
-
-### Provisioning (once, over ADB — requires no root)
-
-The device must have no other accounts on the primary user (a fresh device or one with accounts
-removed), which is Android's requirement for `set-device-owner`:
-
-```bash
-adb shell dpm set-device-owner com.loic.wakeup/.receiver.WakeUpDeviceAdminReceiver
-```
-
-### Removal
-
-```bash
-adb shell dpm remove-active-admin com.loic.wakeup/.receiver.WakeUpDeviceAdminReceiver
-```
-
-### Escape hatch (no ADB needed)
-
-If you ever need to relinquish device-owner status from the phone itself, open **Settings →
-App blocking** and tap **"Clear device owner"** on the KIOSK LOCKDOWN card (shown only while
-WakeUp is the device owner, behind a confirm dialog). That calls `clearDeviceOwnerApp(...)` and
-drops any active lock task, returning the phone to a normal, unmanaged state.
+For most people this covers the actual goal: a groggy tap can't quietly kill the alarm.
 
 ## NFC Tag Details
 
