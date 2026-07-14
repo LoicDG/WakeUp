@@ -1,6 +1,5 @@
 package com.loic.wakeup.ui.screens
 
-import android.app.ActivityManager
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -43,7 +42,6 @@ import com.loic.wakeup.R
 import com.loic.wakeup.data.AlarmDatabase
 import com.loic.wakeup.data.AlarmRepository
 import com.loic.wakeup.data.NfcTagStore
-import com.loic.wakeup.domain.DeviceOwnerPolicy
 import com.loic.wakeup.service.AlarmService
 import com.loic.wakeup.service.RingState
 import androidx.compose.ui.semantics.Role
@@ -81,9 +79,6 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
     // that transition via AlarmService.ringState.
     private val teardownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            // A successful dismiss (NFC scan or notification action) is the ONLY exit from the
-            // kiosk lock task — drop lockdown before finishing so the power menu returns.
-            exitKioskIfActive()
             finish()
         }
     }
@@ -150,44 +145,6 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         // permits NFC, so re-arming reader mode here is what makes the post-unlock scan work.
         dismissingKeyguard = false
         enableNfcReaderIfNeeded()
-        // Idempotent — re-enters the kiosk after an activity recreation (config change,
-        // process death) without losing lock-task state, and no-ops when not device owner.
-        enterKioskIfOwner()
-    }
-
-    /**
-     * If provisioned as device owner, enable lockdown and enter lock task so the power menu is
-     * suppressed for the duration of the ring. Idempotent: checks the current lock-task state so
-     * a recreation mid-ring doesn't double-start. When not device owner this is a no-op and the
-     * alarm runs as a normal full-screen alarm.
-     */
-    private fun enterKioskIfOwner() {
-        // This activity is only ever shown for an active alarm, so device-owner status is the only
-        // gate — we don't hinge on AlarmService.isRunning, which can still be false on the very
-        // first onResume (service and activity start in parallel from AlarmReceiver).
-        if (!DeviceOwnerPolicy.isDeviceOwner(this)) return
-        DeviceOwnerPolicy.enableAlarmLockdown(this)
-        val am = getSystemService(ActivityManager::class.java)
-        val state = am?.lockTaskModeState ?: ActivityManager.LOCK_TASK_MODE_NONE
-        if (state == ActivityManager.LOCK_TASK_MODE_NONE) {
-            try {
-                startLockTask()
-            } catch (t: Throwable) {
-                Log.w("AlarmRinging", "startLockTask failed — continuing as normal alarm", t)
-            }
-        }
-    }
-
-    /** Leave lock task (if in it) and restore default lock-task features. Safe to call anytime. */
-    private fun exitKioskIfActive() {
-        try {
-            val am = getSystemService(ActivityManager::class.java)
-            val state = am?.lockTaskModeState ?: ActivityManager.LOCK_TASK_MODE_NONE
-            if (state != ActivityManager.LOCK_TASK_MODE_NONE) stopLockTask()
-        } catch (t: Throwable) {
-            Log.w("AlarmRinging", "stopLockTask failed", t)
-        }
-        DeviceOwnerPolicy.disableAlarmLockdown(this)
     }
 
     // Samsung One UI gates the NFC radio while the keyguard is active, so a tag can't be scanned
@@ -272,9 +229,6 @@ class AlarmRingingActivity : ComponentActivity(), NfcAdapter.ReaderCallback {
         } catch (_: IllegalStateException) {
         }
         // Backstop: if this activity is actually finishing (not just a config-change recreation),
-        // make sure lock task is released so a hardware fault or unexpected finish can never leave
-        // the phone stuck in the kiosk. onResume re-enters if we're merely being recreated.
-        if (isFinishing) exitKioskIfActive()
         unregisterReceiver(teardownReceiver)
     }
 

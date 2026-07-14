@@ -69,18 +69,6 @@
     <string name="reminder_action_turn_off">Turn off</string>
     <string name="time_format_12h">12-hour</string>
     <string name="time_format_24h">24-hour</string>
-    <!-- Kiosk / device-owner lockdown -->
-    <string name="device_admin_description">Lets WakeUp suppress the power menu while an alarm is ringing (kiosk mode). Only active when WakeUp is set as device owner via ADB.</string>
-    <string name="kiosk_title">KIOSK LOCKDOWN</string>
-    <string name="kiosk_summary">When WakeUp is the device owner, the power menu is hidden while an alarm rings so it can\'t be tapped away. A hardware power-off still works.</string>
-    <string name="kiosk_status_owner">Active — device owner. Power menu is suppressed during alarms.</string>
-    <string name="kiosk_status_normal">Inactive — not device owner. Provision via ADB to enable (see README).</string>
-    <string name="kiosk_owner_cleared">Device owner cleared — kiosk lockdown disabled.</string>
-    <string name="kiosk_owner_absent">Not a device owner — nothing to clear.</string>
-    <string name="kiosk_clear_owner">Clear device owner</string>
-    <string name="kiosk_clear_confirm_title">Clear device owner?</string>
-    <string name="kiosk_clear_confirm_body">This turns off kiosk lockdown and returns the phone to a normal, unmanaged state. Re-enabling it requires provisioning again over ADB.</string>
-    <string name="kiosk_clear_confirm_ok">Clear</string>
     <!-- Power-menu guard (accessibility, best-effort) -->
     <string name="power_menu_title">POWER MENU</string>
     <string name="power_menu_summary">While an alarm rings, close the power menu if it\'s opened, so it can\'t be tapped to power off and skip the alarm. Best-effort — a hardware power-off still works.</string>

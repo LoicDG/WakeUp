@@ -29,7 +29,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.loic.wakeup.R
-import com.loic.wakeup.domain.DeviceOwnerPolicy
 import com.loic.wakeup.service.AppBlockAccessibilityService
 import com.loic.wakeup.ui.theme.auroraSky
 import com.loic.wakeup.ui.theme.frostedPanel
@@ -107,8 +106,6 @@ fun AppBlockSettingsScreen(
                             onToggle = vm::setPowerMenuGuard,
                         )
                     }
-
-                    item { KioskLockdownPanel() }
 
                     item {
                         Text(
@@ -232,82 +229,6 @@ private fun PowerMenuGuardPanel(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
-            }
-        }
-    }
-}
-
-/**
- * Status card for the optional device-owner kiosk layer. Shows whether WakeUp is currently the
- * device owner (which is what suppresses the power menu during alarms), and — when it is —
- * offers an explicit "Clear device owner" button (behind a confirm dialog) that relinquishes
- * device-owner status and undoes the lockdown without needing ADB.
- */
-@Composable
-private fun KioskLockdownPanel() {
-    val context = LocalContext.current
-    var isOwner by remember { mutableStateOf(DeviceOwnerPolicy.isDeviceOwner(context)) }
-    var showConfirm by remember { mutableStateOf(false) }
-
-    if (showConfirm) {
-        AlertDialog(
-            onDismissRequest = { showConfirm = false },
-            title = { Text(stringResource(R.string.kiosk_clear_confirm_title)) },
-            text = { Text(stringResource(R.string.kiosk_clear_confirm_body)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    val cleared = DeviceOwnerPolicy.relinquishDeviceOwner(context)
-                    isOwner = DeviceOwnerPolicy.isDeviceOwner(context)
-                    showConfirm = false
-                    Toast.makeText(
-                        context,
-                        if (cleared) R.string.kiosk_owner_cleared else R.string.kiosk_owner_absent,
-                        Toast.LENGTH_LONG,
-                    ).show()
-                }) { Text(stringResource(R.string.kiosk_clear_confirm_ok)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirm = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .frostedPanel(RoundedCornerShape(24.dp)),
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                stringResource(R.string.kiosk_title),
-                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                stringResource(if (isOwner) R.string.kiosk_status_owner else R.string.kiosk_status_normal),
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (isOwner) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                stringResource(R.string.kiosk_summary),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (isOwner) {
-                OutlinedButton(
-                    onClick = { showConfirm = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error,
-                    ),
-                ) { Text(stringResource(R.string.kiosk_clear_owner)) }
             }
         }
     }
