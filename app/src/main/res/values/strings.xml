@@ -81,4 +81,9 @@
     <string name="kiosk_clear_confirm_title">Clear device owner?</string>
     <string name="kiosk_clear_confirm_body">This turns off kiosk lockdown and returns the phone to a normal, unmanaged state. Re-enabling it requires provisioning again over ADB.</string>
     <string name="kiosk_clear_confirm_ok">Clear</string>
+    <!-- Power-menu guard (accessibility, best-effort) -->
+    <string name="power_menu_title">POWER MENU</string>
+    <string name="power_menu_summary">While an alarm rings, close the power menu if it\'s opened, so it can\'t be tapped to power off and skip the alarm. Best-effort — a hardware power-off still works.</string>
+    <string name="power_menu_enable">Guard power menu during alarms</string>
+    <string name="power_menu_service_needed">Needs the WakeUp accessibility service. Turn it on in Android settings.</string>
 </resources>

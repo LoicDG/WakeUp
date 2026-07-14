@@ -27,6 +27,7 @@ data class InstalledApp(
 class AppBlockSettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     val enabled: StateFlow<Boolean> = AppBlockStore.enabled
+    val powerMenuGuard: StateFlow<Boolean> = AppBlockStore.powerMenuGuardEnabled
     val allowedPackages: StateFlow<Set<String>> = AppBlockStore.allowedPackages
 
     private val _apps = MutableStateFlow<List<InstalledApp>>(emptyList())
@@ -41,6 +42,8 @@ class AppBlockSettingsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setEnabled(value: Boolean) = AppBlockStore.setEnabled(value)
+
+    fun setPowerMenuGuard(value: Boolean) = AppBlockStore.setPowerMenuGuardEnabled(value)
 
     fun setAllowed(packageName: String, allowed: Boolean) =
         AppBlockStore.setAllowed(packageName, allowed)
