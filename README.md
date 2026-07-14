@@ -75,6 +75,25 @@ Architecture: **MVVM + Repository** with Jetpack Compose UI and Room for persist
 | `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_SPECIAL_USE` | Run alarm service in foreground |
 | `VIBRATE` | Vibrate on alarm |
 
+## Power-menu guard (optional, no device owner needed)
+
+A **best-effort** layer that stops the system power menu from being tapped to power off / restart
+away from a ringing alarm — **without** needing device owner. It reuses the same accessibility
+service as app blocking: while an alarm is ringing, if the power menu (global-actions dialog)
+appears, the service immediately closes it (`GLOBAL_ACTION_BACK`) and pulls the ringing screen
+back.
+
+Enable it under **Settings → App blocking → POWER MENU** (needs the WakeUp accessibility service
+turned on). Honest limitations:
+
+- It **dismisses** the menu rather than hiding it — apps can't hide it without device owner — so
+  there's a brief flash, and a fast, deliberate tap on "Power off" could still land first.
+- Detection of the power-menu window is heuristic and can vary by Android version / OEM skin.
+- A real hardware power-off (holding the button) still works, by design.
+
+For most people this covers the actual goal — a groggy tap can't quietly kill the alarm — without
+any of the device-owner trade-offs below.
+
 ## Kiosk Lockdown (optional, device owner)
 
 An **optional** layer that suppresses the power menu while an alarm is ringing, so it can't be

@@ -21,6 +21,7 @@ object AppBlockStore {
     private const val KEY_ENABLED = "blocking_enabled"
     private const val KEY_ALLOWED = "allowed_packages"
     private const val KEY_SEEDED = "allowed_seeded"
+    private const val KEY_POWER_MENU_GUARD = "power_menu_guard_enabled"
 
     private lateinit var prefs: SharedPreferences
 
@@ -30,9 +31,15 @@ object AppBlockStore {
     private val _allowedPackages = MutableStateFlow<Set<String>>(emptySet())
     val allowedPackages: StateFlow<Set<String>> = _allowedPackages.asStateFlow()
 
+    // Best-effort power-menu guard — independent of app blocking, but served by the same
+    // accessibility service. Off by default (opt-in).
+    private val _powerMenuGuardEnabled = MutableStateFlow(false)
+    val powerMenuGuardEnabled: StateFlow<Boolean> = _powerMenuGuardEnabled.asStateFlow()
+
     fun init(context: Context) {
         prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         _enabled.value = prefs.getBoolean(KEY_ENABLED, false)
+        _powerMenuGuardEnabled.value = prefs.getBoolean(KEY_POWER_MENU_GUARD, false)
         // getStringSet may hand back the very instance it stores, so copy defensively.
         _allowedPackages.value = prefs.getStringSet(KEY_ALLOWED, emptySet())!!.toSet()
     }
@@ -40,6 +47,11 @@ object AppBlockStore {
     fun setEnabled(value: Boolean) {
         _enabled.value = value
         prefs.edit().putBoolean(KEY_ENABLED, value).apply()
+    }
+
+    fun setPowerMenuGuardEnabled(value: Boolean) {
+        _powerMenuGuardEnabled.value = value
+        prefs.edit().putBoolean(KEY_POWER_MENU_GUARD, value).apply()
     }
 
     /**

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import com.loic.wakeup.data.AppBlockStore
 import com.loic.wakeup.domain.AppBlockPolicy
+import com.loic.wakeup.domain.PowerMenuPolicy
 import com.loic.wakeup.ui.screens.AlarmRingingActivity
 
 /**
@@ -25,6 +26,22 @@ class AppBlockAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = event.packageName?.toString() ?: return
+
+        // Best-effort power-menu guard: if the global-actions dialog surfaces during an alarm,
+        // send BACK to close it and pull the ringing screen back. Apps can't hide this dialog
+        // without device owner, so this only *dismisses* it — a fast, deliberate tap could still
+        // land first, and a hardware power-off still works (by design).
+        if (PowerMenuPolicy.shouldDismiss(
+                packageName = pkg,
+                className = event.className?.toString(),
+                alarmActive = AlarmService.isRunning,
+                guardEnabled = AppBlockStore.powerMenuGuardEnabled.value,
+            )
+        ) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            bringBackLockScreen()
+            return
+        }
 
         val block = AppBlockPolicy.shouldBlock(
             foregroundPackage = pkg,

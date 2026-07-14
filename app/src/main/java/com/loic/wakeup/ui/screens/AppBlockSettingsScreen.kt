@@ -47,6 +47,7 @@ fun AppBlockSettingsScreen(
 ) {
     val context = LocalContext.current
     val enabled by vm.enabled.collectAsState()
+    val powerMenuGuard by vm.powerMenuGuard.collectAsState()
     val allowed by vm.allowedPackages.collectAsState()
     val apps by vm.apps.collectAsState()
     val loading by vm.loading.collectAsState()
@@ -96,6 +97,14 @@ fun AppBlockSettingsScreen(
                                     Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                                 )
                             },
+                        )
+                    }
+
+                    item {
+                        PowerMenuGuardPanel(
+                            enabled = powerMenuGuard,
+                            serviceOn = serviceOn,
+                            onToggle = vm::setPowerMenuGuard,
                         )
                     }
 
@@ -160,6 +169,68 @@ fun AppBlockSettingsScreen(
                     stringResource(R.string.app_blocking),
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onBackground,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Toggle for the best-effort power-menu guard. While an alarm rings, the accessibility service
+ * dismisses the system power menu if it's opened, so it can't be tapped to kill the alarm. Needs
+ * the same accessibility service as app blocking; it's a hack (a fast tap can still slip through,
+ * and a hardware power-off always works), so we label it plainly.
+ */
+@Composable
+private fun PowerMenuGuardPanel(
+    enabled: Boolean,
+    serviceOn: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .frostedPanel(RoundedCornerShape(24.dp)),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                stringResource(R.string.power_menu_title),
+                style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                stringResource(R.string.power_menu_summary),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.power_menu_enable),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    ),
+                )
+            }
+            // Inert without the accessibility service — surface that, mirroring the blocking panel.
+            if (enabled && !serviceOn) {
+                Text(
+                    stringResource(R.string.power_menu_service_needed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
         }
