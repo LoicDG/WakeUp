@@ -5,6 +5,8 @@ build/
 
 # Local configuration
 local.properties
+# Holds machine-specific paths and signing secrets — never commit.
+gradle.properties
 
 # IDE
 .idea/
