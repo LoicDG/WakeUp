@@ -12,6 +12,7 @@ class WakeUpApp : Application() {
     companion object {
         const val ALARM_CHANNEL_ID = "wakeup_alarms"
         const val REMINDER_CHANNEL_ID = "wakeup_reminders"
+        const val FAILSAFE_CHANNEL_ID = "wakeup_failsafe"
     }
 
     override fun onCreate() {
@@ -41,9 +42,17 @@ class WakeUpApp : Application() {
                 description = getString(R.string.reminder_channel_description)
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
+            val failsafeChannel = NotificationChannel(
+                FAILSAFE_CHANNEL_ID,
+                getString(R.string.failsafe_channel_name),
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = getString(R.string.failsafe_channel_description)
+            }
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(channel)
             nm.createNotificationChannel(reminderChannel)
+            nm.createNotificationChannel(failsafeChannel)
         }
     }
 }

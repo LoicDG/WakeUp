@@ -6,6 +6,7 @@ import android.content.Intent
 import com.loic.wakeup.data.AlarmDatabase
 import com.loic.wakeup.data.AlarmRepository
 import com.loic.wakeup.data.NfcTagStore
+import com.loic.wakeup.data.TagFailsafeRepository
 import com.loic.wakeup.domain.AlarmScheduler
 import com.loic.wakeup.domain.canActivateWithGlobalTag
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +35,8 @@ class BootReceiver : BroadcastReceiver() {
                         scheduler.scheduleReenable(alarm, reenableAt)
                     }
                 }
+                val failsafes = TagFailsafeRepository(AlarmDatabase.getInstance(context).tagFailsafeDao())
+                failsafes.getAllEnabled().forEach { scheduler.scheduleFailsafe(it) }
             } finally {
                 pendingResult.finish()
             }

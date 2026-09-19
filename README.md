@@ -10,6 +10,7 @@ An Android alarm app that requires you to physically scan an NFC tag to dismiss 
 - **Lock-screen overlay** — alarm fires over the lock screen; volume keys and back button are blocked
 - **Custom ringtone** — pick any ringtone from the system or leave blank for the default alarm sound
 - **Boot persistence** — all enabled alarms are rescheduled automatically after device reboot
+- **Location failsafe (per NFC tag)** — pick where each tag lives and a daily check time; if you're more than 100 m away at the check, that tag's alarms are deactivated so you're never stuck with an alarm you can't dismiss
 - **Dark theme** with an amber/midnight color palette
 
 ## Requirements
@@ -74,6 +75,28 @@ Architecture: **MVVM + Repository** with Jetpack Compose UI and Room for persist
 | `RECEIVE_BOOT_COMPLETED` | Reschedule alarms after reboot |
 | `FOREGROUND_SERVICE` / `FOREGROUND_SERVICE_SPECIAL_USE` | Run alarm service in foreground |
 | `VIBRATE` | Vibrate on alarm |
+| `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` | Location failsafe: set a tag's spot, check you're near it |
+| `ACCESS_BACKGROUND_LOCATION` | Location failsafe: the daily check runs in the background |
+| `FOREGROUND_SERVICE_LOCATION` | Location failsafe: the check runs in a short `location` foreground service |
+
+## Location failsafe
+
+Alarms can only be dismissed with their NFC tag, so an alarm ringing while you're away from the tag
+(travelling, sleeping elsewhere) can't be stopped. **Settings → Failsafe** lists every registered tag
+(the global one plus any custom per-alarm tags). For each you can set:
+
+- **the tag's spot** — from your current location, or typed/pasted coordinates (`45.50170, -73.56730`);
+- **a daily check time**.
+
+At the check time WakeUp locates the device. If it's more than **100 m** from the spot, the tag's
+alarms that would ring before the next check are deactivated and a notification tells you which:
+recurring alarms skip one ring and come back on their own, one-time alarms are turned off. Alarms
+after the next check are left for that check to decide, so a Friday-night check away from home never
+silences Monday's alarm.
+
+It errs on the side of ringing: a fix is only "away" if its whole accuracy circle is beyond 100 m,
+and if no location can be found the alarms stay on (you get a notification). It needs precise
+location set to **"Allow all the time"** — the Failsafe screen walks you through it.
 
 ## Power-menu guard (no device owner needed)
 

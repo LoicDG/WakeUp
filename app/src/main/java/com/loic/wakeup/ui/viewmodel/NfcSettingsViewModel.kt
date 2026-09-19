@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.loic.wakeup.data.AlarmDatabase
 import com.loic.wakeup.data.AlarmRepository
 import com.loic.wakeup.data.NfcTagStore
+import com.loic.wakeup.data.TagFailsafeRepository
 import com.loic.wakeup.domain.AlarmScheduler
 import com.loic.wakeup.domain.requiresGlobalTag
 import kotlinx.coroutines.launch
@@ -26,10 +27,27 @@ class NfcSettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onTagScanned(hexUid: String) {
         viewModelScope.launch {
+            val previousUid = store.getUid()
             store.setUid(hexUid)
             _uid.value = hexUid
             _scanning.value = false
+            if (previousUid != null && previousUid != hexUid) carryOverFailsafe(previousUid, hexUid)
         }
+    }
+
+    /**
+     * Replacing the global tag keeps its failsafe — the new tag most likely lives in the same spot.
+     * The old UID's failsafe is left alone (a custom-tag alarm may still use it); if nothing does,
+     * [com.loic.wakeup.receiver.FailsafeReceiver] drops it at its next check.
+     */
+    private suspend fun carryOverFailsafe(fromUid: String, toUid: String) {
+        val app = getApplication<Application>()
+        val failsafes = TagFailsafeRepository(AlarmDatabase.getInstance(app).tagFailsafeDao())
+        val previous = failsafes.getByUid(fromUid) ?: return
+        if (failsafes.getByUid(toUid) != null) return
+        val carried = previous.copy(tagUid = toUid)
+        failsafes.upsert(carried)
+        AlarmScheduler(app).scheduleFailsafe(carried)
     }
 
     suspend fun previewClearCount(): Int {

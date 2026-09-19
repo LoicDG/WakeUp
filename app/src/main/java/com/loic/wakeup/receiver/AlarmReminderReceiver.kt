@@ -11,9 +11,9 @@ import com.loic.wakeup.WakeUpApp
 import com.loic.wakeup.data.AlarmDatabase
 import com.loic.wakeup.data.AlarmEntity
 import com.loic.wakeup.data.AlarmRepository
+import com.loic.wakeup.domain.AlarmDeactivator
 import com.loic.wakeup.domain.AlarmScheduler
 import com.loic.wakeup.data.SettingsStore
-import com.loic.wakeup.domain.NextTriggerCalculator
 import com.loic.wakeup.ui.components.formatClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,17 +60,8 @@ class AlarmReminderReceiver : BroadcastReceiver() {
             try {
                 val repo = AlarmRepository(AlarmDatabase.getInstance(context).alarmDao())
                 val alarm = repo.getById(alarmId) ?: return@launch
-                val scheduler = AlarmScheduler(context)
-                if (alarm.daysMask != 0) {
-                    // Recurring: skip only today's occurrence; auto re-arm for the next.
-                    val reenableAt = NextTriggerCalculator.next(alarm.hour, alarm.minute, alarm.daysMask)
-                    repo.setTemporarilyDisabledUntil(alarmId, reenableAt)
-                    scheduler.cancel(alarmId)
-                    scheduler.scheduleReenable(alarm, reenableAt)
-                } else {
-                    repo.setEnabled(alarmId, false)
-                    scheduler.cancel(alarmId)
-                }
+                // Recurring: skip only today's occurrence and auto re-arm; one-shot: turn off.
+                AlarmDeactivator.deactivate(alarm, repo, AlarmScheduler(context))
                 cancelNotification(context, alarmId)
             } finally {
                 pendingResult.finish()

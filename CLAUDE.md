@@ -29,11 +29,11 @@ Single-module Android app (`app/`) using MVVM + Repository pattern with Jetpack 
 
 **Layer overview:**
 
-- `data/` — Room database (`AlarmDatabase`, `AlarmDao`, `AlarmEntity`) + `AlarmRepository` (thin DAO wrapper) + `NfcTagStore` (encrypted SharedPreferences via `androidx.security.crypto` for the paired NFC tag UID)
-- `domain/` — `AlarmScheduler` (wraps `AlarmManager.setAlarmClock`) + `NextTriggerCalculator` (pure logic for next trigger epoch millis)
-- `service/` — `AlarmService`: foreground service that plays ringtone, vibrates, shows notification with snooze action; handles snooze rescheduling
-- `receiver/` — `AlarmReceiver` (fired by AlarmManager, starts `AlarmService`) + `BootReceiver` (reschedules all enabled alarms after reboot)
-- `ui/screens/` — Compose screens (`AlarmListScreen`, `AlarmEditScreen`, `NfcSettingsScreen`) + `AlarmRingingActivity` (lock-screen overlay, handles NFC foreground dispatch for tag-based dismiss)
+- `data/` — Room database (`AlarmDatabase`, `AlarmDao`, `AlarmEntity`, `TagFailsafeDao`, `TagFailsafeEntity`) + `AlarmRepository` / `TagFailsafeRepository` (thin DAO wrappers) + `NfcTagStore` (encrypted SharedPreferences via `androidx.security.crypto` for the paired NFC tag UID)
+- `domain/` — `AlarmScheduler` (wraps `AlarmManager.setAlarmClock`; also queues failsafe checks) + `NextTriggerCalculator` (pure logic for next trigger epoch millis) + the failsafe pieces: `FailsafePolicy` / `GeoPoint` (pure), `CurrentLocation` / `LocationAccess` (framework `LocationManager`), `AlarmDeactivator` (shared skip/turn-off logic)
+- `service/` — `AlarmService`: foreground service that plays ringtone, vibrates, shows notification with snooze action; handles snooze rescheduling. `FailsafeService`: short location-type foreground service running one failsafe check
+- `receiver/` — `AlarmReceiver` (fired by AlarmManager, starts `AlarmService`) + `FailsafeReceiver` (daily failsafe check time, starts `FailsafeService`) + `BootReceiver` (reschedules all enabled alarms and failsafes after reboot)
+- `ui/screens/` — Compose screens (`AlarmListScreen`, `AlarmEditScreen`, `NfcSettingsScreen`, `AppBlockSettingsScreen`, `FailsafeSettingsScreen`) + `AlarmRingingActivity` (lock-screen overlay, handles NFC foreground dispatch for tag-based dismiss)
 - `ui/viewmodel/` — one ViewModel per screen
 - `ui/nav/NavGraph.kt` — Navigation Compose graph
 
@@ -60,6 +60,8 @@ NFC (required hardware), `SCHEDULE_EXACT_ALARM`, `USE_EXACT_ALARM`, `POST_NOTIFI
 The app-blocking feature also declares an `AccessibilityService` (`AppBlockAccessibilityService`) bound with `BIND_ACCESSIBILITY_SERVICE`; the OS only activates it after the user turns it on in **Settings → Accessibility**. It cannot be granted from code.
 
 The `AlarmService` foreground service type is `specialUse` (subtype: `alarm`).
+
+The location failsafe adds `ACCESS_COARSE_LOCATION` + `ACCESS_FINE_LOCATION` (precise is required — approximate is ~2 km), `ACCESS_BACKGROUND_LOCATION` ("Allow all the time", since checks run from an alarm while the app is in the background; on Android 11+ it can only be granted from the system settings page the permission request opens) and `FOREGROUND_SERVICE_LOCATION`. `FailsafeService`'s foreground service type is `location`.
 
 ## AlarmEntity fields
 
@@ -93,6 +95,18 @@ The `AlarmService` foreground service type is `specialUse` (subtype: `alarm`).
 - **State:** `AppBlockStore` (plain `SharedPreferences`, `StateFlow`s) holds the master enable flag + the allow-listed package names, seeded once with the default dialer/SMS/Settings packages via `seedDefaultsIfNeeded`. Read directly by the accessibility service (same process).
 - The service does nothing until the user enables it in Accessibility settings; `AppBlockSettingsScreen` shows live on/off status (re-checked on `ON_RESUME` via `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES`) and deep-links there.
 
+## Location failsafe (per NFC tag)
+
+- Goal: an alarm can only be dismissed with its tag, so an alarm ringing while you're away from the tag (travelling, sleeping elsewhere) can't be stopped. Each registered tag can have a failsafe: a spot (lat/lng) and a daily check time. At the check, if the device is more than `FailsafePolicy.RADIUS_METERS` (100 m) from the spot, the tag's alarms are deactivated.
+- **Tags:** "registered" = the global tag (`NfcTagStore`) + every alarm's custom `nfcTagUid` (`registeredTagUids`). An alarm belongs to the tag `effectiveTagUid(globalUid)` returns (custom tag, else global; none if `dismissWithoutTag`) — the same lookup `AlarmRingingActivity` uses.
+- **State:** `TagFailsafeEntity` (Room table `tag_failsafes`, PK = tag UID; `enabled`, `hour`/`minute`, nullable `latitude`/`longitude`). A failsafe without a spot can't be enabled and is never scheduled.
+- **Scheduling:** `AlarmScheduler.scheduleFailsafe` uses `setExactAndAllowWhileIdle` (never shows as the "next alarm"); PendingIntent identity is the tag UID in the data URI (`wakeup-failsafe:<uid>`), not a request-code offset. Rescheduled on every edit, on boot, and by `FailsafeReceiver` itself each day (before starting the check, so a failed check never breaks the chain).
+- **Check flow:** `FailsafeReceiver` drops the failsafe if its tag is no longer registered (lazy orphan cleanup), queues tomorrow, and starts `FailsafeService` only if some alarm would actually be deactivated. The service goes foreground (type `location`), gets a fix (`CurrentLocation`: all enabled providers in parallel, early exit on a ≤30 m fix, 30 s timeout, falls back to a ≤10 min old last-known fix), and deactivates via `AlarmDeactivator`. Missing background permission or no fix → alarms stay on and a notification says so.
+- **Which alarms (`FailsafePolicy.alarmsToDeactivate`):** enabled alarms of that tag whose next occurrence is **before the next check** — later ones are left to that check (so a Friday-night check away never silences Monday; Sunday night's check decides). The currently ringing/snoozed alarm is excluded (deactivating it would cancel its snooze re-ring).
+- **"Away" (`FailsafePolicy.isAway`):** `distance − fixAccuracy > 100 m` — only when the whole accuracy circle is outside. Borderline fixes keep the alarm armed.
+- **"Deactivate" (`AlarmDeactivator`, shared with the reminder's action):** recurring → skip only the next occurrence (temporary disable + reboot-safe re-enable); one-shot → turned off.
+- Replacing the global tag copies its failsafe to the new UID (`NfcSettingsViewModel.carryOverFailsafe`).
+
 ## Theme
 
 Dark-only (`WakeUpTheme` always uses `darkColorScheme`; `dynamicColor = false`). Named colors: `Amber` (primary/accent), `Midnight` (background), `DeepNavy` (surface), `StarWhite` (on-surface), `SlateBlue` (variant), `MorningBlue` (secondary), `NavyVariant`, `NavyOutline`. Display clock uses `FontFamily.Serif` at 80 sp.
@@ -101,8 +115,9 @@ Dark-only (`WakeUpTheme` always uses `darkColorScheme`; `dynamicColor = false`).
 
 - `alarm_list` — `AlarmListScreen`
 - `alarm_edit/{alarmId}` — `AlarmEditScreen`; `alarmId = -1` means new alarm
-- `nfc_settings` — `NfcSettingsScreen` (the app's settings page; has a button into `app_block_settings`)
+- `nfc_settings` — `NfcSettingsScreen` (the app's settings page; has buttons into `failsafe_settings` and `app_block_settings`)
 - `app_block_settings` — `AppBlockSettingsScreen`
+- `failsafe_settings` — `FailsafeSettingsScreen` (one card per registered tag + location-access status)
 
 `AlarmRingingActivity` is a separate `Activity` (not part of the Compose nav graph); launched directly from `AlarmReceiver` and via full-screen `PendingIntent` in the notification.
 
@@ -112,7 +127,7 @@ Dark-only (`WakeUpTheme` always uses `darkColorScheme`; `dynamicColor = false`).
 
 ## Notification channel
 
-`WakeUpApp.ALARM_CHANNEL_ID = "wakeup_alarms"`, created in `Application.onCreate`. Channel has `bypassDnd = true`, vibration enabled, `VISIBILITY_PUBLIC`.
+`WakeUpApp.ALARM_CHANNEL_ID = "wakeup_alarms"`, created in `Application.onCreate`. Channel has `bypassDnd = true`, vibration enabled, `VISIBILITY_PUBLIC`. Also `REMINDER_CHANNEL_ID = "wakeup_reminders"` and `FAILSAFE_CHANNEL_ID = "wakeup_failsafe"` (silent "checking" FGS notification + one outcome notification per tag, posted with the tag UID as notification tag).
 
 ## AlarmRingingActivity — Lock Screen Pitfalls
   - NFC reader mode is enabled in  and disabled in .

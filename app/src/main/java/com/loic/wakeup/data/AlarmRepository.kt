@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 
 class AlarmRepository(private val dao: AlarmDao) {
     fun observeAll(): Flow<List<AlarmEntity>> = dao.observeAll()
+    suspend fun getAll(): List<AlarmEntity> = dao.getAll()
     suspend fun getById(id: Int): AlarmEntity? = dao.getById(id)
     suspend fun getAllEnabled(): List<AlarmEntity> = dao.getAllEnabled()
     suspend fun getAllTemporarilyDisabled(): List<AlarmEntity> = dao.getAllTemporarilyDisabled()

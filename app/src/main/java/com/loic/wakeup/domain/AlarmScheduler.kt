@@ -5,9 +5,12 @@ import android.app.AlarmManager.AlarmClockInfo
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import com.loic.wakeup.data.AlarmEntity
+import com.loic.wakeup.data.TagFailsafeEntity
 import com.loic.wakeup.receiver.AlarmReceiver
 import com.loic.wakeup.receiver.AlarmReminderReceiver
+import com.loic.wakeup.receiver.FailsafeReceiver
 
 class AlarmScheduler(private val context: Context) {
 
@@ -62,6 +65,43 @@ class AlarmScheduler(private val context: Context) {
         alarmManager.cancel(buildReminderPendingIntent(alarmId))
     }
 
+    /**
+     * Queues a tag failsafe's next daily location check (see [FailsafeReceiver]). Like the
+     * reminder, it uses setExactAndAllowWhileIdle so it never shows up as the "next alarm".
+     * A failsafe that is off or has no spot yet is cancelled instead.
+     */
+    fun scheduleFailsafe(failsafe: TagFailsafeEntity) {
+        if (!failsafe.enabled || failsafe.spot == null) {
+            cancelFailsafe(failsafe.tagUid)
+            return
+        }
+        alarmManager.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            NextTriggerCalculator.next(failsafe.hour, failsafe.minute, 0),
+            buildFailsafePendingIntent(failsafe.tagUid)
+        )
+    }
+
+    fun cancelFailsafe(tagUid: String) {
+        alarmManager.cancel(buildFailsafePendingIntent(tagUid))
+    }
+
+    private fun buildFailsafePendingIntent(tagUid: String): PendingIntent {
+        // Failsafes are keyed by the tag's string UID rather than an int id, so the UID goes in
+        // the data URI — which is part of PendingIntent identity — instead of a request-code offset.
+        val intent = Intent(context, FailsafeReceiver::class.java).apply {
+            action = FailsafeReceiver.ACTION_CHECK
+            data = Uri.fromParts(FAILSAFE_URI_SCHEME, tagUid, null)
+            putExtra(FailsafeReceiver.EXTRA_TAG_UID, tagUid)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+    }
+
     private fun buildReminderPendingIntent(alarmId: Int): PendingIntent {
         val intent = Intent(context, AlarmReminderReceiver::class.java).apply {
             action = AlarmReminderReceiver.ACTION_SHOW_REMINDER
@@ -111,5 +151,6 @@ class AlarmScheduler(private val context: Context) {
         const val SNOOZE_REQUEST_CODE_OFFSET = 200_000
         const val REMINDER_REQUEST_CODE_OFFSET = 300_000
         const val REMINDER_LEAD_MILLIS = 30L * 60L * 1000L
+        const val FAILSAFE_URI_SCHEME = "wakeup-failsafe"
     }
 }

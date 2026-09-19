@@ -54,6 +54,10 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
   - Thin repository wrapper around `AlarmDao` used by ViewModels and services.
 - `NfcTagStore.kt`
   - Securely stores and retrieves the registered NFC tag UID using `EncryptedSharedPreferences`.
+- `TagFailsafeEntity.kt`
+  - Room entity (`tag_failsafes`) for the per-tag location failsafe, keyed by tag UID: `enabled`, daily check `hour`/`minute`, and the tag's spot (`latitude`/`longitude`, null until set). Added in DB version 5 (`MIGRATION_4_5`).
+- `TagFailsafeDao.kt` / `TagFailsafeRepository.kt`
+  - DAO (observe all, get by UID, get enabled, upsert, delete) and its thin repository wrapper.
 - `AppBlockStore.kt`
   - Plain-`SharedPreferences` store for the app-blocking feature, exposed as `StateFlow`s: master `enabled` flag, the `allowedPackages` set, plus `powerMenuGuardEnabled` (the best-effort power-menu guard toggle — **on by default**, independent of app blocking but served by the same accessibility service). Seeds defaults (dialer/SMS/Settings) once via `seedDefaultsIfNeeded`. Read by both the settings UI and `AppBlockAccessibilityService`. Init in `WakeUpApp.onCreate`.
 
@@ -67,6 +71,16 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
   - Computes the next alarm trigger time based on the alarm's time and repeating days mask.
 - `AppBlockPolicy.kt`
   - Pure decision for the app-blocking feature: `shouldBlock(foregroundPackage, selfPackage, allowedPackages, alarmActive, featureEnabled)`. Never blocks WakeUp itself, core system packages (`android`, `com.android.systemui`), or allow-listed apps; the home launcher stays blockable so HOME bounces back to the alarm. Unit-tested in `AppBlockPolicyTest`.
+- `AlarmTagRequirement.kt`
+  - Tag rules on `AlarmEntity`: `requiresGlobalTag`, `canActivateWithGlobalTag`, `effectiveTagUid` (custom tag, else global, none for no-tag alarms) and `registeredTagUids` (global + every custom tag). Unit-tested in `AlarmTagRequirementTest`.
+- `AlarmDeactivator.kt`
+  - Shared "deactivate": recurring alarms skip only their next occurrence (temporary disable + re-enable), one-shot alarms turn off. Used by the reminder notification action and the location failsafe.
+- `FailsafePolicy.kt`
+  - Pure decision logic for the location failsafe: `isAway(distance, accuracy)` (only when the whole accuracy circle is beyond 100 m) and `alarmsToDeactivate(...)` (the tag's enabled alarms that ring before the next check, minus the ringing one). Also the `TagFailsafeEntity.spot` extension. Unit-tested in `FailsafePolicyTest`.
+- `GeoPoint.kt`
+  - Lat/lng value type: haversine `distanceTo`, `format()` and `parse("lat, lng")` for pasted coordinates. Unit-tested in `GeoPointTest`.
+- `CurrentLocation.kt`
+  - `CurrentLocation.get(context)`: one-shot fix via the framework `LocationManager` (fused/GPS/network in parallel, early exit on an accurate fix, recent last-known fallback). `LocationAccess`: precise / "all the time" permission checks.
 - `PowerMenuPolicy.kt`
   - Pure decision for the best-effort power-menu guard: `isPowerMenu(packageName, className)` heuristically matches the System UI global-actions/power-menu window (markers like `globalaction`/`powermenu`/`shutdown`), and `shouldDismiss(packageName, className, alarmActive, guardEnabled)` gates that on an active alarm + the guard being on. Backs `AppBlockAccessibilityService`'s power-menu dismissal. Unit-tested in `PowerMenuPolicyTest`.
 
@@ -76,10 +90,16 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 
 - `AlarmReceiver.kt`
   - Receives alarms from `AlarmManager`, launches the ringing UI and foreground service, resets snooze count, reschedules repeating alarms, and disables one-shot alarms.
+- `FailsafeReceiver.kt`
+  - Fired daily at a tag failsafe's check time. Drops failsafes of tags that are no longer registered, queues tomorrow's check, and starts `FailsafeService` only when one of the tag's alarms would be deactivated (or posts a notification if background location access is missing).
 - `BootReceiver.kt`
-  - Reschedules all enabled alarms after device reboot.
+  - Reschedules all enabled alarms and failsafe checks after device reboot.
 - `AlarmService.kt`
   - Foreground service that plays the alarm ringtone, vibrates, posts a high-priority notification with full-screen intent, handles snooze, and exposes `RingState` for the UI.
+- `FailsafeService.kt`
+  - Short-lived foreground service (type `location`) that runs one failsafe check: gets a fix, and if the device is clearly away from the tag's spot deactivates the tag's upcoming alarms via `AlarmDeactivator`. No fix → alarms stay on.
+- `FailsafeNotifications.kt`
+  - The failsafe's notifications: silent "checking" FGS notification, and per-tag outcome notifications (alarms deactivated with distance + list, couldn't locate, permission missing).
 - `AppBlockAccessibilityService.kt`
   - Accessibility service backing the app-blocking feature. On every foreground-app change it consults `AppBlockPolicy`; when an app should be blocked (feature on + alarm ringing + not allow-listed) it relaunches `AlarmRingingActivity`, so no app — nor HOME/recents — can escape the alarm. It also runs the best-effort power-menu guard: when `PowerMenuPolicy.shouldDismiss(...)` matches the System UI power menu during an alarm, it fires `GLOBAL_ACTION_BACK` (after a ~150 ms delay — the dialog must take input focus first, or the key is swallowed by the ringing activity) to close it and pulls the ringing screen back. Inert until the user enables it in Android's accessibility settings.
 
@@ -88,7 +108,7 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 ## UI navigation (`ui/nav` package)
 
 - `NavGraph.kt`
-  - Compose navigation graph defining routes for alarm list, alarm edit, and NFC settings screens.
+  - Compose navigation graph defining routes for alarm list, alarm edit, settings, app-blocking and failsafe screens.
 
 ---
 
@@ -101,7 +121,9 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 - `AlarmRingingActivity.kt`
   - Full-screen ringing activity that shows alarm state, prevents back/volume escape, enables NFC reader mode on resume, and dismisses alarms when the registered NFC tag is scanned.
 - `NfcSettingsScreen.kt`
-  - Settings screen to register, replace, or remove the NFC tag using NFC reader mode, plus buttons for permissions, exact alarm settings, and a button into the app-blocking screen.
+  - Settings screen to register, replace, or remove the NFC tag using NFC reader mode, plus buttons for permissions, exact alarm settings, and buttons into the failsafe and app-blocking screens.
+- `FailsafeSettingsScreen.kt`
+  - Per-tag location failsafe settings: an explainer, a location-access panel (precise → "Allow all the time", re-checked on resume), and one card per registered tag showing its alarms, an on/off switch, the daily check time (Material time-picker dialog) and the tag's spot (set from the current location or typed/pasted coordinates, viewable on a map).
 - `AppBlockSettingsScreen.kt`
   - Settings screen for the app-blocking feature: master on/off switch, live accessibility-service status with a button into Android's accessibility settings, and a scrollable list of installed apps with checkboxes to build the allow-list. Also hosts a "POWER MENU" panel (switch for the best-effort power-menu guard).
 
@@ -127,7 +149,9 @@ WakeUp is a single-module Android alarm app built with Jetpack Compose, Room, an
 - `AlarmEditViewModel.kt`
   - Manages alarm creation/editing and prevents saving/enabling alarms if no NFC tag is registered.
 - `NfcSettingsViewModel.kt`
-  - Coordinates NFC tag scanning state, stores tag UID, clears the registered tag, and disables all alarms when the tag is removed.
+  - Coordinates NFC tag scanning state, stores tag UID, clears the registered tag, and disables all alarms when the tag is removed. Replacing the global tag carries its failsafe over to the new UID.
+- `FailsafeSettingsViewModel.kt`
+  - Combines alarms + failsafes into one `TagFailsafeItem` per registered tag; edits failsafes (serialised read-modify-write) and reschedules their checks; fills a tag's spot from the current location.
 
 ---
 

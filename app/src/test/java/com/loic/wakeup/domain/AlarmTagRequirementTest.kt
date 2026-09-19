@@ -1,7 +1,9 @@
 package com.loic.wakeup.domain
 
 import com.loic.wakeup.data.AlarmEntity
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,6 +32,26 @@ class AlarmTagRequirementTest {
 
         assertFalse(alarm.requiresGlobalTag())
         assertTrue(alarm.canActivateWithGlobalTag(null))
+    }
+
+    @Test
+    fun effectiveTagUid_prefersCustomTagOverGlobal() {
+        assertEquals("deadbeef", alarm(nfcTagUid = "deadbeef", dismissWithoutTag = false).effectiveTagUid("a1b2c3d4"))
+        assertEquals("a1b2c3d4", alarm(nfcTagUid = null, dismissWithoutTag = false).effectiveTagUid("a1b2c3d4"))
+        assertNull(alarm(nfcTagUid = null, dismissWithoutTag = false).effectiveTagUid(null))
+        assertNull(alarm(nfcTagUid = null, dismissWithoutTag = true).effectiveTagUid("a1b2c3d4"))
+    }
+
+    @Test
+    fun registeredTagUids_listsGlobalThenCustomTagsOnce() {
+        val alarms = listOf(
+            alarm(nfcTagUid = "deadbeef", dismissWithoutTag = false),
+            alarm(nfcTagUid = null, dismissWithoutTag = false),
+            alarm(nfcTagUid = "a1b2c3d4", dismissWithoutTag = false),
+            alarm(nfcTagUid = "deadbeef", dismissWithoutTag = false),
+        )
+        assertEquals(listOf("a1b2c3d4", "deadbeef"), registeredTagUids("a1b2c3d4", alarms))
+        assertEquals(listOf("deadbeef", "a1b2c3d4"), registeredTagUids(null, alarms))
     }
 
     private fun alarm(nfcTagUid: String?, dismissWithoutTag: Boolean) = AlarmEntity(

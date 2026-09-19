@@ -35,6 +35,7 @@ import dev.chrisbanes.haze.hazeSource
 fun NfcSettingsScreen(
     onBack: () -> Unit,
     onAppBlocking: () -> Unit = {},
+    onFailsafe: () -> Unit = {},
     vm: NfcSettingsViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -171,6 +172,38 @@ fun NfcSettingsScreen(
                             }
                         }
                     }
+                }
+            }
+
+            // Failsafe section
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .frostedPanel(RoundedCornerShape(24.dp)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.failsafe_title),
+                        style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 2.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        stringResource(R.string.failsafe_summary),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Button(
+                        onClick = onFailsafe,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                        ),
+                    ) { Text(stringResource(R.string.failsafe)) }
                 }
             }
 
